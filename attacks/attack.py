@@ -10,7 +10,7 @@ import pickle
 from dataset import ActivationsDatasetDynamicPrimaryText
 from load_file_paths import load_file_paths
 
-model = 'phi3'
+model = 'llama3_8b'
 
 models = {
     'phi3': 'phi__3__3.8',
@@ -18,7 +18,8 @@ models = {
 }
 
 ROOT_DIR = {
-    'phi3': '/mnt/12EA576EEA574D5B/Activation/phi__3__3.8/test'
+    'phi3': '/mnt/12EA576EEA574D5B/Activation/phi__3__3.8/test',
+    'llama3_8b': '/mnt/12EA576EEA574D5B/Activation/llama__3__8B/test'
 }
 
 LAYERS_PER_MODEL = {
@@ -66,21 +67,30 @@ if __name__ == "__main__":
 
     filepaths = load_file_paths(f'../data_files/test_poisoned_files_{model}.txt')
 
-    layer_index = -1
+    layer_index = 4
     num_layer = LAYERS_PER_MODEL[model][layer_index]
 
     linear_model = pickle.load(open(os.path.join('../trained_linear_probes_microsoft',
                                         model, str(num_layer), 'model.pickle'), 'rb'))
 
-    activations = get_activations(filepaths[:1], num_layer, linear_model)
-
+    correctly_classified_instances = 0
     count_success = 0
 
-    for activation in activations:
-        # success = fgsm(linear_model, activation, 1, epsilon=.00001)
-        success = pgd(linear_model, activation, 1, epsilon=.02, alpha=.001, num_iter=20)
-        if success:
-            count_success += 1
+    original_stdout = sys.stdout
+    sys.stdout = open(os.devnull, 'w')
 
-    print("Total instance: ", activations.shape[0])
-    print("Success: ", count_success)
+    for i in range(len(filepaths)):
+
+        activations = get_activations(filepaths[i: i + 1], num_layer, linear_model)
+
+        for activation in activations:
+            success = fgsm(linear_model, activation, 1, epsilon=.02)
+            # success = pgd(linear_model, activation, 1, epsilon=.02, alpha=.001, num_iter=20)
+            if success:
+                count_success += 1
+
+        correctly_classified_instances += activations.shape[0]
+
+    sys.stdout = original_stdout
+
+    print(f"\nlayer {num_layer}   Total correctly classified instances: {correctly_classified_instances}\nSuccess: {count_success}")
