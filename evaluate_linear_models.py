@@ -4,19 +4,22 @@ from load_file_paths import load_file_paths
 import numpy as np
 import os
 from collections import defaultdict
+from constants import LAYERS_PER_MODEL, ROOT_DIR
 
 
 np.set_printoptions(suppress=True, linewidth=10000)
 
+model = 'llama3_8b'
 
-def test(test_files_path):
-    num_layer = 0
+
+def test(test_files_path, num_layer):
+
     test_files = load_file_paths(test_files_path)
 
     # Test the linear model on a small subset of activations
     dataset = ActivationsDatasetDynamicPrimaryText(
         test_files[:2],
-        root_dir='/mnt/12EA576EEA574D5B/Activation/phi__3__3.8/test',
+        root_dir=ROOT_DIR[model],
         num_layers=(num_layer, num_layer)
     )
 
@@ -25,8 +28,8 @@ def test(test_files_path):
     for primary, text in dataset:
         diff.append((text - primary).flatten().float().numpy())
 
-    model = pickle.load(open(os.path.join('./phi3', str(num_layer), 'model.pickle'), 'rb'))
-    predict = model.predict(diff)
+    linear_model = pickle.load(open(os.path.join('./trained_linear_probes_microsoft', model, str(num_layer), 'model.pickle'), 'rb'))
+    predict = linear_model.predict(diff)
 
     poisoned_predicted = np.sum(predict)
 
@@ -36,7 +39,7 @@ def test(test_files_path):
         print(f"Test accuracy: {poisoned_predicted / len(dataset) * 100:.2f}%")
 
 
-def count_microsoft_model_confidence(test_files_path):
+def count_microsoft_model_confidence(test_files_path, num_layer):
 
     """
     Go through all the test activations and create groups based on confidence scores (.5, .6, etc.)
@@ -46,7 +49,6 @@ def count_microsoft_model_confidence(test_files_path):
     test_files_path
     """
 
-    num_layer = 0
     test_files = load_file_paths(test_files_path)
 
     cnt = defaultdict(int)
@@ -56,7 +58,7 @@ def count_microsoft_model_confidence(test_files_path):
 
         dataset = ActivationsDatasetDynamicPrimaryText(
             test_files[i: i + 1],
-            root_dir='/mnt/12EA576EEA574D5B/Activation/llama__3__8B/test',
+            root_dir=ROOT_DIR[model],
             num_layers=(num_layer, num_layer)
         )
 
@@ -65,10 +67,10 @@ def count_microsoft_model_confidence(test_files_path):
         for primary, text in dataset:
             diff.append((text - primary).flatten().float().numpy())
 
-        model = pickle.load(open(os.path.join('./trained_linear_probes_microsoft/llama3_8b',
+        linear_model = pickle.load(open(os.path.join('./trained_linear_probes_microsoft', model,
                                               str(num_layer), 'model.pickle'), 'rb'))
 
-        predict_proba = model.predict_proba(diff)
+        predict_proba = linear_model.predict_proba(diff)
         total_instance += predict_proba.shape[0]
 
         for x in predict_proba:
@@ -90,6 +92,54 @@ def count_microsoft_model_confidence(test_files_path):
     print(cnt)
 
 
+def check_model_consistency(test_files_path):
+
+    """
+
+    This function checks if all the binary classifiers predict the same label for a particular instance.
+    Check the similarity of the last four classifiers too, since later layers' activations are more important in task drift detection.
+
+    """
+
+    test_files = load_file_paths(test_files_path)
+    same_prediction_across_five_classifiers = 0
+    same_prediction_across_last_four_classifiers = 0
+
+    for i in range(len(test_files)):
+        prediction_across_layers = []
+        for num_layer in LAYERS_PER_MODEL[model]:
+            # Test the linear model on a small subset of activations
+            dataset = ActivationsDatasetDynamicPrimaryText(
+                test_files[i: i + 1],
+                root_dir=ROOT_DIR[model],
+                num_layers=(num_layer, num_layer)
+            )
+
+            diff = []
+
+            for primary, text in dataset:
+                diff.append((text - primary).flatten().float().numpy())
+
+            linear_model = pickle.load(open(os.path.join('./trained_linear_probes_microsoft', model, str(num_layer), 'model.pickle'), 'rb'))
+            predict = linear_model.predict(diff)
+
+            prediction_across_layers.append(predict)
+
+        for i in range(len(dataset)):
+            if (prediction_across_layers[0][i] == prediction_across_layers[1][i]
+                    == prediction_across_layers[2][i] == prediction_across_layers[3][i] == prediction_across_layers[4][i]):
+                same_prediction_across_five_classifiers += 1
+
+            if (prediction_across_layers[1][i] == prediction_across_layers[2][i]
+                    == prediction_across_layers[3][i] == prediction_across_layers[4][i]):
+                same_prediction_across_last_four_classifiers += 1
+
+    print("Same prediction across five classifiers: ", same_prediction_across_five_classifiers)
+    print("Same prediction across last four classifiers: ", same_prediction_across_last_four_classifiers)
+
+
 if __name__ == '__main__':
-    # test('data_files/test_poisoned_files_phi3.txt')
-    count_microsoft_model_confidence('data_files/test_poisoned_files_llama3_8b.txt')
+    # test(f'data_files/test_poisoned_files_{model}.txt', 0)
+    # count_microsoft_model_confidence(f'data_files/test_poisoned_files_{model}.txt', 0)
+
+    check_model_consistency(f'data_files/test_poisoned_files_{model}.txt')

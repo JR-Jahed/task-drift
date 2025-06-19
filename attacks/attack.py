@@ -1,31 +1,17 @@
 import os
 import sys
 
-import numpy as np
-import torch
 from fgsm import fgsm
 from pgd import pgd
 import pickle
+import json
+import time
 
 from dataset import ActivationsDatasetDynamicPrimaryText
 from load_file_paths import load_file_paths
+from constants import ROOT_DIR, LAYERS_PER_MODEL
 
 model = 'llama3_8b'
-
-models = {
-    'phi3': 'phi__3__3.8',
-    'llama3_8b': 'llama__3__8',
-}
-
-ROOT_DIR = {
-    'phi3': '/mnt/12EA576EEA574D5B/Activation/phi__3__3.8/test',
-    'llama3_8b': '/mnt/12EA576EEA574D5B/Activation/llama__3__8B/test'
-}
-
-LAYERS_PER_MODEL = {
-    'phi3': [0, 7, 15, 23, 31],
-    'llama3_8b': [0, 7, 15, 23, 31],
-}
 
 
 def get_activations(filepath, num_layer, linear_model, confidence=-1):
@@ -52,14 +38,13 @@ def get_activations(filepath, num_layer, linear_model, confidence=-1):
         if confidence == -1:
             # Select all the correctly classified instances
             if prob[label] > .5:
-                activations.append((dataset[i][0].flatten().float().numpy(), dataset[i][1].flatten().float().numpy()))
+                activations.append((dataset[i][0].flatten().float().detach(), dataset[i][1].flatten().float().detach()))
         else:
             # Select a subset of correctly classified instances where the
             # confidence score is in the range [confidence, confidence + .1)
             if confidence <= prob[label] < confidence + .1:
-                activations.append((dataset[i][0].flatten().float().numpy(), dataset[i][1].flatten().float().numpy()))
+                activations.append((dataset[i][0].flatten().float().detach(), dataset[i][1].flatten().float().detach()))
 
-    activations = np.array(activations)
     return activations
 
 
@@ -67,30 +52,60 @@ if __name__ == "__main__":
 
     filepaths = load_file_paths(f'../data_files/test_poisoned_files_{model}.txt')
 
-    layer_index = 4
-    num_layer = LAYERS_PER_MODEL[model][layer_index]
+    epsilons = [.005, .01, .02]
 
-    linear_model = pickle.load(open(os.path.join('../trained_linear_probes_microsoft',
-                                        model, str(num_layer), 'model.pickle'), 'rb'))
+    attack_type = 'fgsm'
 
-    correctly_classified_instances = 0
-    count_success = 0
+    _map = {}
 
-    original_stdout = sys.stdout
-    sys.stdout = open(os.devnull, 'w')
+    start = time.time()
 
-    for i in range(len(filepaths)):
+    for num_layer in LAYERS_PER_MODEL[model]:
 
-        activations = get_activations(filepaths[i: i + 1], num_layer, linear_model)
+        if num_layer not in _map:
+            _map[num_layer] = {}
 
-        for activation in activations:
-            success = fgsm(linear_model, activation, 1, epsilon=.02)
-            # success = pgd(linear_model, activation, 1, epsilon=.02, alpha=.001, num_iter=20)
-            if success:
-                count_success += 1
+        for epsilon in epsilons:
 
-        correctly_classified_instances += activations.shape[0]
+            linear_model = pickle.load(open(os.path.join('../trained_linear_probes_microsoft',
+                                                model, str(num_layer), 'model.pickle'), 'rb'))
 
-    sys.stdout = original_stdout
+            correctly_classified_instances = 0
+            count_success = 0
 
-    print(f"\nlayer {num_layer}   Total correctly classified instances: {correctly_classified_instances}\nSuccess: {count_success}")
+            original_stdout = sys.stdout
+            sys.stdout = open(os.devnull, 'w')
+
+            for i in range(len(filepaths)):
+
+                activations = get_activations(filepaths[i: i + 1], num_layer, linear_model)
+
+                for activation in activations:
+                    if attack_type == 'fgsm':
+                        success = fgsm(linear_model, activation, 1, epsilon=epsilon)
+                    else:
+                        success = pgd(linear_model, activation, 1, epsilon=epsilon, alpha=.001, num_iter=20)
+                    if success:
+                        count_success += 1
+
+                correctly_classified_instances += len(activations)
+
+            success_rate = count_success / correctly_classified_instances
+
+            if 'epsilon' not in _map[num_layer]:
+                _map[num_layer]['epsilon'] = []
+
+            if 'success_rate' not in _map[num_layer]:
+                _map[num_layer]['success_rate'] = []
+
+            _map[num_layer]['epsilon'].append(epsilon)
+            _map[num_layer]['success_rate'].append(success_rate)
+
+            sys.stdout = original_stdout
+
+            print(f"\nlayer {num_layer}   Total correctly classified instances: {correctly_classified_instances}\nSuccess: {count_success}")
+
+    end = time.time()
+    print("Total time: ", end - start)
+
+    json.dump(_map, open(f'{attack_type}_attack_details_on_{model}.json', 'w'))
