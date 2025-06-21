@@ -23,6 +23,7 @@ def plot_epsilon_accuracy(filepath):
 
 if __name__ == '__main__':
 
+    attack_type = 'pgd'
     model = 'llama3_8b'
 
-    plot_epsilon_accuracy(f'fgsm_attack_details_on_{model}.json')
+    plot_epsilon_accuracy(f'{attack_type}_attack_details_on_{model}.json')

@@ -54,7 +54,7 @@ if __name__ == "__main__":
 
     epsilons = [.005, .01, .02]
 
-    attack_type = 'fgsm'
+    attack_type = 'pgd'
 
     _map = {}
 
