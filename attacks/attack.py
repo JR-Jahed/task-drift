@@ -52,18 +52,24 @@ if __name__ == "__main__":
 
     filepaths = load_file_paths(f'../data_files/test_poisoned_files_{model}.txt')
 
-    epsilons = [.005, .01, .02]
+    epsilons = [0.05, 0.1, 0.5, 1, 2, 5]
 
-    attack_type = 'pgd'
+    attack_type = 'fgsm'
 
-    _map = {}
+    file_path = f'{attack_type}_attack_details_on_{model}.json'
+
+    if os.path.exists(file_path):
+        with open(file_path, 'r') as f:
+            data = json.load(f)
+    else:
+        data = {}
 
     start = time.time()
 
     for num_layer in LAYERS_PER_MODEL[model]:
 
-        if num_layer not in _map:
-            _map[num_layer] = {}
+        if str(num_layer) not in data:
+            data[str(num_layer)] = {}
 
         for epsilon in epsilons:
 
@@ -84,7 +90,7 @@ if __name__ == "__main__":
                     if attack_type == 'fgsm':
                         success = fgsm(linear_model, activation, 1, epsilon=epsilon)
                     else:
-                        success = pgd(linear_model, activation, 1, epsilon=epsilon, alpha=.001, num_iter=20)
+                        success = pgd(linear_model, activation, 1, epsilon=epsilon, alpha=.01, num_iter=20)
                     if success:
                         count_success += 1
 
@@ -92,14 +98,14 @@ if __name__ == "__main__":
 
             success_rate = count_success / correctly_classified_instances
 
-            if 'epsilon' not in _map[num_layer]:
-                _map[num_layer]['epsilon'] = []
+            if 'epsilon' not in data[str(num_layer)]:
+                data[str(num_layer)]['epsilon'] = []
 
-            if 'success_rate' not in _map[num_layer]:
-                _map[num_layer]['success_rate'] = []
+            if 'success_rate' not in data[str(num_layer)]:
+                data[str(num_layer)]['success_rate'] = []
 
-            _map[num_layer]['epsilon'].append(epsilon)
-            _map[num_layer]['success_rate'].append(success_rate)
+            data[str(num_layer)]['epsilon'].append(epsilon)
+            data[str(num_layer)]['success_rate'].append(success_rate)
 
             sys.stdout = original_stdout
 
@@ -108,4 +114,4 @@ if __name__ == "__main__":
     end = time.time()
     print("Total time: ", end - start)
 
-    json.dump(_map, open(f'{attack_type}_attack_details_on_{model}.json', 'w'))
+    json.dump(data, open(f'{attack_type}_attack_details_on_{model}.json', 'w'))

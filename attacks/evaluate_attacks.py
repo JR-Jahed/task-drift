@@ -7,17 +7,23 @@ def plot_epsilon_accuracy(filepath):
     with open(filepath, 'r') as file:
         data = json.load(file)
 
+    epsilon = data['0']['epsilon']
+    x_pos = list(range(len(epsilon)))
+
+    plt.figure(figsize=(10, 6))
+    plt.xticks(ticks=x_pos, labels=epsilon)
+
     for layer in data:
-        epsilon = data[layer]['epsilon']
         success_rate = data[layer]['success_rate']
 
-        plt.plot(epsilon, success_rate, label='Layer {}'.format(layer))
+        plt.plot(x_pos, success_rate, label='Layer {}'.format(layer))
 
     plt.xlabel('epsilon')
     plt.ylabel('Attack success rate')
-    plt.legend()
     plt.title(filepath.split('.')[0])
+    plt.legend(loc='center left', bbox_to_anchor=(1, 1))
 
+    plt.tight_layout()
     plt.show()
 
 
