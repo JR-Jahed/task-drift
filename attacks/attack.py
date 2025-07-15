@@ -14,7 +14,20 @@ from constants import ROOT_DIR, LAYERS_PER_MODEL
 model = 'phi3'
 
 
-def get_activations(filepath, num_layer, linear_model, confidence=-1):
+def get_correctly_classified_activations(filepath, num_layer, linear_model, confidence=-1):
+
+    """
+
+    Returns activations of the correctly classified instances and their indices in the stored .pt files
+
+    :param filepath: filepath of a particular .pt file
+    :param num_layer: Layer whose activations should be returned
+    :param linear_model: Logistic regression model
+    :param confidence: Confidence level of the linear model above which activations are returned. If -1, all correctly
+                       classified activations are returned.
+
+    :return: List of correctly classified activations
+    """
 
     dataset = ActivationsDatasetDynamicPrimaryText(
         filepath,
@@ -39,13 +52,13 @@ def get_activations(filepath, num_layer, linear_model, confidence=-1):
         if confidence == -1:
             # Select all the correctly classified instances
             if prob[label] > .5:
-                activations.append((dataset[i][0].flatten().float().detach(), dataset[i][1].flatten().float().detach()))
+                activations.append((dataset[i][0].flatten().detach(), dataset[i][1].flatten().detach()))
                 indices.append(i)
         else:
             # Select a subset of correctly classified instances where the
             # confidence score is in the range [confidence, confidence + .1)
             if confidence <= prob[label] < confidence + .1:
-                activations.append((dataset[i][0].flatten().float().detach(), dataset[i][1].flatten().float().detach()))
+                activations.append((dataset[i][0].flatten().detach(), dataset[i][1].flatten().detach()))
                 indices.append(i)
 
     return activations, indices
@@ -55,7 +68,7 @@ if __name__ == "__main__":
 
     filepaths = load_file_paths(f'../data_files/test_poisoned_files_{model}.txt')
 
-    epsilons = [0.005, 0.01, 0.02, 0.05, 0.1, 0.5]
+    epsilons = [0.005, 0.01, 0.02, 0.05, 0.1, 0.5, 1.0]
 
     attack_type = 'pgd'
 
@@ -101,14 +114,14 @@ if __name__ == "__main__":
 
             for i in range(len(filepaths)):
 
-                activations, indices = get_activations(filepaths[i: i + 1], num_layer, linear_model)
+                activations, indices = get_correctly_classified_activations(filepaths[i: i + 1], num_layer, linear_model)
                 indices_successful_attack = []
 
                 for index, activation in zip(indices, activations):
                     if attack_type == 'fgsm':
-                        success = fgsm(linear_model, activation, 1, epsilon=epsilon)
+                        success, target_activation = fgsm(linear_model, activation, 0, epsilon=epsilon)
                     else:
-                        success = pgd(linear_model, activation, 1, epsilon=epsilon, alpha=.01, num_iter=20)
+                        success, target_activation = pgd(linear_model, activation, 0, epsilon=epsilon, alpha=.01, num_iter=40)
                     if success:
                         count_success += 1
                         indices_successful_attack.append(index)
