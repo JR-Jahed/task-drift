@@ -28,7 +28,7 @@ def test(test_files_path, num_layer):
     for primary, text in dataset:
         diff.append((text - primary).flatten().float().numpy())
 
-    linear_model = pickle.load(open(os.path.join('./trained_linear_probes_microsoft', model, str(num_layer), 'model.pickle'), 'rb'))
+    linear_model = pickle.load(open(os.path.join('../trained_linear_probes_microsoft', model, str(num_layer), 'model.pickle'), 'rb'))
     predict = linear_model.predict(diff)
 
     poisoned_predicted = np.sum(predict)
@@ -67,8 +67,8 @@ def count_microsoft_model_confidence(test_files_path, num_layer):
         for primary, text in dataset:
             diff.append((text - primary).flatten().float().numpy())
 
-        linear_model = pickle.load(open(os.path.join('./trained_linear_probes_microsoft', model,
-                                              str(num_layer), 'model.pickle'), 'rb'))
+        linear_model = pickle.load(open(os.path.join('../trained_linear_probes_microsoft', model,
+                                                     str(num_layer), 'model.pickle'), 'rb'))
 
         predict_proba = linear_model.predict_proba(diff)
         total_instance += predict_proba.shape[0]
@@ -120,18 +120,17 @@ def check_model_consistency(test_files_path):
             for primary, text in dataset:
                 diff.append((text - primary).flatten().float().numpy())
 
-            linear_model = pickle.load(open(os.path.join('./trained_linear_probes_microsoft', model, str(num_layer), 'model.pickle'), 'rb'))
+            linear_model = pickle.load(open(os.path.join('../trained_linear_probes_microsoft', model, str(num_layer), 'model.pickle'), 'rb'))
             predict = linear_model.predict(diff)
 
             prediction_across_layers.append(predict)
 
-        for i in range(len(dataset)):
-            if (prediction_across_layers[0][i] == prediction_across_layers[1][i]
-                    == prediction_across_layers[2][i] == prediction_across_layers[3][i] == prediction_across_layers[4][i]):
-                same_prediction_across_five_classifiers += 1
+        prediction_across_layers = np.array(prediction_across_layers)
 
-            if (prediction_across_layers[1][i] == prediction_across_layers[2][i]
-                    == prediction_across_layers[3][i] == prediction_across_layers[4][i]):
+        for i in range(prediction_across_layers.shape[1]):
+            if len(set(prediction_across_layers[:, i])) == 1:
+                same_prediction_across_five_classifiers += 1
+            if len(set(prediction_across_layers[1:, i])) == 1:
                 same_prediction_across_last_four_classifiers += 1
 
     print("Same prediction across five classifiers: ", same_prediction_across_five_classifiers)
