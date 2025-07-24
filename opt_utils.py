@@ -4,6 +4,7 @@ import numpy as np
 import gc
 from transformers import AutoTokenizer, AutoModelForCausalLM
 import json
+from utils.load_file_paths import load_file_paths
 
 
 def get_embedding_matrix(model):
@@ -256,18 +257,28 @@ def get_primary_activation(index):
     """
     This will return the primary activation of last layer only
     """
-    activations = torch.load('/home/40456997@eeecs.qub.ac.uk/Activation/phi__3__3.8/test/poisoned_hidden_states_0_1000_20240717_115335.pt')
 
-    return activations[0][index][-1]
+    index_in_file = index - int(index / 1000) * 1000
+
+    filepaths = load_file_paths('task_drift/data_files/test_poisoned_files_phi3.txt')
+
+    activations = torch.load(f'/home/40456997@eeecs.qub.ac.uk/Activation/phi__3__3.8/test/{filepaths[int(index / 1000)]}')
+
+    return activations[0][index_in_file][-1]
 
 
 def get_poisoned_activation(index):
     """
     This will return the poisoned activation of last layer only
     """
-    activations = torch.load('/home/40456997@eeecs.qub.ac.uk/Activation/phi__3__3.8/test/poisoned_hidden_states_0_1000_20240717_115335.pt')
 
-    return activations[1][index][-1]
+    index_in_file = index - int(index / 1000) * 1000
+
+    filepaths = load_file_paths('task_drift/data_files/test_poisoned_files_phi3.txt')
+
+    activations = torch.load(f'/home/40456997@eeecs.qub.ac.uk/Activation/phi__3__3.8/test/{filepaths[int(index / 1000)]}')
+
+    return activations[1][index_in_file][-1]
 
 
 def get_last_token_activations_single(text, tokenizer, model):
