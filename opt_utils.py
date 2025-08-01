@@ -2,9 +2,10 @@ import torch
 import torch.nn as nn
 import numpy as np
 import gc
-from transformers import AutoTokenizer, AutoModelForCausalLM
+from transformers import AutoTokenizer, AutoModelForCausalLM, AutoConfig
 import json
 from utils.load_file_paths import load_file_paths
+from gradient_hook_manager import GradientHookManager
 
 
 def get_embedding_matrix(model):
@@ -36,7 +37,7 @@ def get_nonascii_toks(tokenizer, device='cpu'):
     return torch.tensor(ascii_toks, device=device)
 
 
-def token_gradients(custom_model, input_ids, input_slice, target, primary_activation):
+def token_gradients(custom_model, input_ids, input_slice, target, primary_activations):
     device = custom_model.base_model.get_input_embeddings().weight.device
 
     embed_weights = get_embedding_matrix(custom_model.base_model)
@@ -71,19 +72,49 @@ def token_gradients(custom_model, input_ids, input_slice, target, primary_activa
         dim=1
     )  # shape: (1, token_length, embedding_dimension)
 
-    logits = custom_model(primary_activation, inputs_embeds=full_embeds)
-    expanded_target = target.expand_as(logits)
-    expanded_target = expanded_target.to(logits.dtype)
+    # 1. Forward pass
+    print("Forward pass...")
+    logits, hidden_states = custom_model(primary_activations, inputs_embeds=full_embeds)
+
+    for hs in hidden_states:
+        hs.requires_grad_(True)
+
+    last_classifier_logits = next(reversed(logits.values()))
+    expanded_target = target.expand_as(last_classifier_logits)
+    expanded_target = expanded_target.to(last_classifier_logits.dtype)
     expanded_target = expanded_target.to(device)
 
-    loss = nn.BCEWithLogitsLoss()(logits, expanded_target)
+    # 2. Set up gradient hook manager
+    hook_manager = GradientHookManager(custom_model, pause_layers=list(logits.keys())[:-1])
+
+    # 3. CRITICAL: Pre-compute classifier gradients FIRST
+    print("Pre-computing classifier gradients...")
+    hook_manager.compute_classifier_gradients(logits, expanded_target, hidden_states)
+
+    # 4. Register hooks AFTER pre-computing gradients
+    print("Registering hooks...")
+    hook_manager.register_hooks(hidden_states)
+
+    loss = nn.BCEWithLogitsLoss()(last_classifier_logits, expanded_target)
+
+    losses = []
+
+    for num_layer in list(logits.keys())[:-1]:
+        # Just to trigger hook
+        loss += logits[num_layer].sum() * 0.0
+
+        losses.append(nn.BCEWithLogitsLoss()(logits[num_layer], expanded_target).item())
+    losses.append(loss.item())
 
     loss.backward()
 
     grad = one_hot.grad.clone()
     grad = grad / grad.norm(dim=-1, keepdim=True)
 
-    return grad, loss, logits, one_hot
+    del hidden_states
+    gc.collect()
+
+    return grad, losses, logits, one_hot
 
 
 def sample_control(control_tokens, grad, batch_size, topk=256, not_allowed_tokens=None):
@@ -155,8 +186,8 @@ def get_filtered_cands(tokenizer, control_cand, filter_cand=True, curr_control=N
     return cands
 
 
-def get_logits(*, custom_model, tokenizer, input_ids, control_slice, primary_activation, test_controls=None, return_ids=False,
-                               batch_size=3):
+def get_logits(*, custom_model, tokenizer, input_ids, control_slice, primary_activations, test_controls=None, return_ids=False,
+                               batch_size=512):
     """
     @Params
     input_ids:         input ids of entire prompt that includes the current adv suffix.
@@ -211,17 +242,17 @@ def get_logits(*, custom_model, tokenizer, input_ids, control_slice, primary_act
     if return_ids:
         del locs, test_ids;
         gc.collect()
-        return forward(custom_model=custom_model, input_ids=ids, attention_mask=attn_mask, primary_activation=primary_activation, batch_size=batch_size), ids
+        return forward(custom_model=custom_model, input_ids=ids, attention_mask=attn_mask, primary_activations=primary_activations, batch_size=batch_size), ids
     else:
         del locs, test_ids
-        logits = forward(custom_model=custom_model, input_ids=ids, attention_mask=attn_mask, primary_activation=primary_activation, batch_size=batch_size)
+        logits = forward(custom_model=custom_model, input_ids=ids, attention_mask=attn_mask, primary_activations=primary_activations, batch_size=batch_size)
         del ids;
         gc.collect()
         return logits
 
 
-def forward(*, custom_model, input_ids, attention_mask, primary_activation, batch_size=3):
-    logits_list = []
+def forward(*, custom_model, input_ids, attention_mask, primary_activations, batch_size=512):
+    logits_list_dict = {k: [] for k in primary_activations}
 
     for i in range(0, input_ids.shape[0], batch_size):
 
@@ -231,19 +262,29 @@ def forward(*, custom_model, input_ids, attention_mask, primary_activation, batc
         else:
             batch_attention_mask = None
 
-        logits = custom_model(primary_activation, input_ids=batch_input_ids, attention_mask=batch_attention_mask)
+        logits, hidden_states = custom_model(primary_activations, input_ids=batch_input_ids, attention_mask=batch_attention_mask)
 
-        logits_list.append(logits)
+        for num_layer, logits_of_this_layer in logits.items():
+            logits_list_dict[num_layer].append(logits_of_this_layer)
 
         gc.collect()
 
     del batch_input_ids, batch_attention_mask
-    return torch.cat(logits_list, dim=0)
+
+    logits_tensor_dict = {}
+
+    for num_layer, logits_list in logits_list_dict.items():
+        logits_tensor_dict[num_layer] = torch.cat(logits_list, dim=0)
+
+    del logits_list_dict
+
+    return logits_tensor_dict
 
 
-def load_model_and_tokenizer(model_path, device='cuda:0'):
+def load_model_and_tokenizer(model_path, torch_dtype=torch.bfloat16, device='cuda:0'):
+    config = AutoConfig.from_pretrained(model_path)
     tokenizer = AutoTokenizer.from_pretrained(model_path, local_files_only=True, device_map='auto')
-    model = AutoModelForCausalLM.from_pretrained(model_path, local_files_only=True, device_map='auto').eval()
+    model = AutoModelForCausalLM.from_pretrained(model_path, config=config, torch_dtype=torch_dtype, local_files_only=True, device_map='auto').eval()
 
     return model, tokenizer
 
@@ -253,32 +294,24 @@ def get_prompt(index):
     return data[index]
 
 
-def get_primary_activation(index):
-    """
-    This will return the primary activation of last layer only
-    """
-
+def get_primary_activation(index, model, layer):
     index_in_file = index - int(index / 1000) * 1000
 
-    filepaths = load_file_paths('task_drift/data_files/test_poisoned_files_phi3.txt')
+    filepaths = load_file_paths(f'./data_files/test_poisoned_files_{model}.txt')
 
-    activations = torch.load(f'/home/40456997@eeecs.qub.ac.uk/Activation/phi__3__3.8/test/{filepaths[int(index / 1000)]}')
+    activations = torch.load(f'/home/40456997@eeecs.qub.ac.uk/Activation/{model}/test/{filepaths[int(index / 1000)]}')
 
-    return activations[0][index_in_file][-1]
+    return activations[0][index_in_file][layer]
 
 
-def get_poisoned_activation(index):
-    """
-    This will return the poisoned activation of last layer only
-    """
-
+def get_poisoned_activation(index, model, layer):
     index_in_file = index - int(index / 1000) * 1000
 
-    filepaths = load_file_paths('task_drift/data_files/test_poisoned_files_phi3.txt')
+    filepaths = load_file_paths(f'./data_files/test_poisoned_files_{model}.txt')
 
-    activations = torch.load(f'/home/40456997@eeecs.qub.ac.uk/Activation/phi__3__3.8/test/{filepaths[int(index / 1000)]}')
+    activations = torch.load(f'/home/40456997@eeecs.qub.ac.uk/Activation/{model}/test/{filepaths[int(index / 1000)]}')
 
-    return activations[1][index_in_file][-1]
+    return activations[1][index_in_file][layer]
 
 
 def get_last_token_activations_single(text, tokenizer, model):

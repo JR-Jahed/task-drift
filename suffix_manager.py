@@ -1,6 +1,16 @@
+import torch
+
 
 class SuffixManager:
     def __init__(self, tokenizer, dataset_item, adv_string):
+
+        """
+
+        :param tokenizer:
+        :param dataset_item: a dictionary
+        :param adv_string: a string
+        """
+
         self.tokenizer = tokenizer
         self.dataset_item = dataset_item
         self.adv_string = adv_string
@@ -24,7 +34,6 @@ class SuffixManager:
             )
         )
 
-        # It requires some modifications
         poisoned_text = (
             (
                     " <"
@@ -55,12 +64,12 @@ class SuffixManager:
         tokens = self.tokenizer(prompt).input_ids
         self.poisoned_text_slice = slice(0, len(tokens))
 
-        prompt = prompt + adv_string
+        prompt = prompt + " " + adv_string
         tokens = self.tokenizer(prompt).input_ids
         self.adv_string_slice = slice(self.poisoned_text_slice.stop, len(tokens))
 
         prompt = prompt + (
-                + " </MAIN>"
+                " </MAIN>"
                 + eliciting_instructions
                 + "<|end|>\n"
                 + "<|assistant|>\n"
@@ -71,4 +80,5 @@ class SuffixManager:
     def get_input_ids(self, adv_string=None):
         prompt = self.get_prompt(adv_string)
         tokens = self.tokenizer(prompt).input_ids
-        return tokens
+        input_ids = torch.tensor(tokens)
+        return input_ids

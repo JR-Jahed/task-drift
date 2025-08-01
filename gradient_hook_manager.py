@@ -7,9 +7,9 @@ class GradientHookManager:
         self.model = model
         self.pause_layers = pause_layers
         self.hooks = []
-        self.accumulated_grads = {}
+        # self.accumulated_grads = {}
         self.classifier_grads = {}
-        self.hidden_states = None  # Store for classifier gradient computation
+        # self.hidden_states = None  # Store for classifier gradient computation
 
     def compute_classifier_gradients(self, logits, target, hidden_states):
         """
@@ -20,7 +20,7 @@ class GradientHookManager:
         :param target: A tensor
 
         """
-        self.hidden_states = hidden_states  # Store for later use
+        # self.hidden_states = hidden_states  # Store for later use
         loss_fn = nn.BCEWithLogitsLoss()
 
         print("Pre-computing classifier gradients...")
@@ -68,7 +68,7 @@ class GradientHookManager:
                     print(f"No classifier gradient available for layer {layer_idx}")
 
                 # Store for inspection (optional)
-                self.accumulated_grads[layer_idx] = accumulated_grad.clone()
+                # self.accumulated_grads[layer_idx] = accumulated_grad.clone()
 
                 # Return accumulated gradient to continue backward flow
                 return accumulated_grad

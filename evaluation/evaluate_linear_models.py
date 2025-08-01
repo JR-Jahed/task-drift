@@ -1,6 +1,6 @@
 import pickle
 from dataset import ActivationsDatasetDynamicPrimaryText
-from load_file_paths import load_file_paths
+from utils.load_file_paths import load_file_paths
 import numpy as np
 import os
 from collections import defaultdict
@@ -125,12 +125,13 @@ def check_model_consistency(test_files_path):
 
             prediction_across_layers.append(predict)
 
-        prediction_across_layers = np.array(prediction_across_layers)
-
-        for i in range(prediction_across_layers.shape[1]):
-            if len(set(prediction_across_layers[:, i])) == 1:
+        for i in range(len(dataset)):
+            if (prediction_across_layers[0][i] == prediction_across_layers[1][i]
+                    == prediction_across_layers[2][i] == prediction_across_layers[3][i] == prediction_across_layers[4][i]):
                 same_prediction_across_five_classifiers += 1
-            if len(set(prediction_across_layers[1:, i])) == 1:
+
+            if (prediction_across_layers[1][i] == prediction_across_layers[2][i]
+                    == prediction_across_layers[3][i] == prediction_across_layers[4][i]):
                 same_prediction_across_last_four_classifiers += 1
 
     print("Same prediction across five classifiers: ", same_prediction_across_five_classifiers)
@@ -141,4 +142,4 @@ if __name__ == '__main__':
     # test(f'data_files/test_poisoned_files_{model}.txt', 0)
     # count_microsoft_model_confidence(f'data_files/test_poisoned_files_{model}.txt', 0)
 
-    check_model_consistency(f'data_files/test_poisoned_files_{model}.txt')
+    check_model_consistency(f'../data_files/test_poisoned_files_{model}.txt')
