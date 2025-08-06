@@ -339,11 +339,18 @@ def get_last_token_activations_single(text, tokenizer, model):
             {"role": "user", "content": text},
         ]
 
+    inputs_text = tokenizer.apply_chat_template(
+        chat, tokenize=False, add_generation_prompt=True, return_tensors="pt"
+    )
+    # print(f"|||{inputs_text}|||")
+    # print("\n----------------------------------------------------------\n")
+
     inputs = tokenizer.apply_chat_template(
             chat, tokenize=True, add_generation_prompt=True, return_tensors="pt"
         )
 
     inputs = inputs.to(device)
+    # print(inputs)
 
     with torch.no_grad():
         try:
