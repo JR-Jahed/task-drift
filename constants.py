@@ -1,3 +1,7 @@
+import os
+
+PROJECT_ROOT = os.path.dirname(__file__)
+
 models = {
     'phi3': 'phi__3__3.8',
     'llama3_8b': 'llama__3__8',

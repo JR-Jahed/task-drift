@@ -8,6 +8,7 @@ from utils.load_file_paths import load_file_paths
 from gradient_hook_manager import GradientHookManager
 import sys
 import os
+import random
 
 
 def get_embedding_matrix(model):
@@ -125,7 +126,7 @@ def token_gradients(custom_model, input_ids, input_slice, target, primary_activa
     return grad, losses, logits, one_hot
 
 
-def sample_control(control_tokens, grad, batch_size, topk=256, not_allowed_tokens=None):
+def sample_control(control_tokens, grad, topk=256, not_allowed_tokens=None):
 
     if not_allowed_tokens is not None:
         grad[:, not_allowed_tokens.to(grad.device)] = np.inf
@@ -134,31 +135,22 @@ def sample_control(control_tokens, grad, batch_size, topk=256, not_allowed_token
     top_indices = (-grad).topk(topk, dim=1).indices  # shape: (num_tokens, topk)
     control_tokens = control_tokens.to(grad.device)
 
-    original_control_tokens = control_tokens.repeat(batch_size, 1)  # shape: (batch_size, num_tokens)
+    total_suffixes = control_tokens.shape[0] * topk
 
-    # new_token_pos contains the index at which the token will be replaced by another, for every adv suffix in the batch
-    # e.g. [0, 0, 0, 0, 1, 1, 1, 1, 2, 2, ...]
-    new_token_pos = torch.arange(
-        0,
-        len(control_tokens),
-        len(control_tokens) / batch_size,
-        device=grad.device
-    ).type(torch.int64)  # shape: (batch_size,)
+    original_control_tokens = control_tokens.repeat(total_suffixes, 1)  # shape: (total_suffixes, num_tokens)
 
-    # new_token_val contains the token indices with which the existing tokens will be replaced
-    new_token_val = torch.gather(
-        # top_indices[new_token_pos] contains top candidates for every position that will be replaced
-        top_indices[new_token_pos],  # shape: (batch_size, topk)
+    new_token_pos = torch.arange(control_tokens.shape[0], device=grad.device).repeat_interleave(topk)  # shape: (total_suffixes,)
+    new_token_val = top_indices.flatten()  # shape: (total_suffixes,)
+    new_control_tokens = original_control_tokens.scatter(
         1,
-        torch.randint(0, topk, (batch_size, 1),
-        device=grad.device)
-    )  # shape: (batch_size,)
-    new_control_tokens = original_control_tokens.scatter_(1, new_token_pos.unsqueeze(-1), new_token_val)  # shape: (batch_size, suffix_length)
+        new_token_pos.unsqueeze(-1),
+        new_token_val.unsqueeze(-1)
+    )  # shape: (total_suffixes, suffix_length)
 
     return new_control_tokens
 
 
-def get_filtered_cands(tokenizer, control_cand, filter_cand=True, curr_control=None):
+def get_filtered_cands(tokenizer, control_cand, new_batch_size=512, filter_cand=True, curr_control=None):
 
     """
     Tokenizers are not invertible. If we have a string s,
@@ -172,7 +164,7 @@ def get_filtered_cands(tokenizer, control_cand, filter_cand=True, curr_control=N
     encoded_again might not be equal to encoded_s
 
     They might differ in length and/or content. Therefore, this function ensures each candidate has same length
-    after decoding and encoding.
+    after decoding and re-encoding. The contents might still be different.
 
     """
 
@@ -181,8 +173,9 @@ def get_filtered_cands(tokenizer, control_cand, filter_cand=True, curr_control=N
     for i in range(control_cand.shape[0]):
         decoded_str = tokenizer.decode(control_cand[i], skip_special_tokens=True)
         re_encoded = tokenizer(" " + decoded_str, add_special_tokens=False).input_ids
+
         if filter_cand:
-            if decoded_str != curr_control and len(control_cand[i]) == len(re_encoded):
+            if decoded_str != curr_control and  len(control_cand[i]) == len(re_encoded):
                 cands.append(decoded_str)
             else:
                 count += 1
@@ -192,11 +185,10 @@ def get_filtered_cands(tokenizer, control_cand, filter_cand=True, curr_control=N
     print(f"{count} cands were filtered")
 
     if filter_cand:
-        import random
         random.shuffle(cands)
         cands = cands + [cands[-1]] * (len(control_cand) - len(cands))
 
-    return cands[:64]
+    return cands[:new_batch_size]
 
 
 def get_logits(*, custom_model, tokenizer, input_ids, control_slice, primary_activations, test_controls=None, return_ids=False,
@@ -265,6 +257,7 @@ def get_logits(*, custom_model, tokenizer, input_ids, control_slice, primary_act
 
 
 def forward(*, custom_model, input_ids, attention_mask, primary_activations, batch_size=512):
+
     logits_list_dict = {k: [] for k in primary_activations}
 
     for i in range(0, input_ids.shape[0], batch_size):

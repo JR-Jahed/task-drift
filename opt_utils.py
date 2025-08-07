@@ -6,6 +6,8 @@ from transformers import AutoTokenizer, AutoModelForCausalLM, AutoConfig
 import json
 from utils.load_file_paths import load_file_paths
 from gradient_hook_manager import GradientHookManager
+from constants import PROJECT_ROOT
+
 
 
 def get_embedding_matrix(model):
@@ -164,7 +166,7 @@ def get_filtered_cands(tokenizer, control_cand, filter_cand=True, curr_control=N
     encoded_again might not be equal to encoded_s
 
     They might differ in length and/or content. Therefore, this function ensures each candidate has same length
-    after decoding and encoding.
+    after decoding and re-encoding. The contents might still be different.
 
     """
 
@@ -297,7 +299,7 @@ def get_prompt(index):
 def get_primary_activation(index, model, layer):
     index_in_file = index - int(index / 1000) * 1000
 
-    filepaths = load_file_paths(f'./data_files/test_poisoned_files_{model}.txt')
+    filepaths = load_file_paths(f'{PROJECT_ROOT}/data_files/test_poisoned_files_{model}.txt')
 
     activations = torch.load(f'/home/40456997@eeecs.qub.ac.uk/Activation/{model}/test/{filepaths[int(index / 1000)]}')
 
@@ -307,7 +309,7 @@ def get_primary_activation(index, model, layer):
 def get_poisoned_activation(index, model, layer):
     index_in_file = index - int(index / 1000) * 1000
 
-    filepaths = load_file_paths(f'./data_files/test_poisoned_files_{model}.txt')
+    filepaths = load_file_paths(f'{PROJECT_ROOT}/data_files/test_poisoned_files_{model}.txt')
 
     activations = torch.load(f'/home/40456997@eeecs.qub.ac.uk/Activation/{model}/test/{filepaths[int(index / 1000)]}')
 
