@@ -9,6 +9,7 @@ from gradient_hook_manager import GradientHookManager
 import sys
 import os
 import random
+from constants import PROJECT_ROOT
 
 
 def get_embedding_matrix(model):
@@ -123,7 +124,7 @@ def token_gradients(custom_model, input_ids, input_slice, target, primary_activa
     del hidden_states
     gc.collect()
 
-    return grad, losses, logits, one_hot
+    return grad, losses
 
 
 def sample_control(control_tokens, grad, topk=256, not_allowed_tokens=None):
@@ -175,7 +176,8 @@ def get_filtered_cands(tokenizer, control_cand, new_batch_size=512, filter_cand=
         re_encoded = tokenizer(" " + decoded_str, add_special_tokens=False).input_ids
 
         if filter_cand:
-            if decoded_str != curr_control and len(control_cand[i]) == len(re_encoded):
+            # No filtering based on length
+            if decoded_str != curr_control: # and len(control_cand[i]) == len(re_encoded):
                 cands.append(decoded_str)
             else:
                 count += 1
@@ -295,17 +297,33 @@ def load_model_and_tokenizer(model_path, torch_dtype=torch.bfloat16, device='cud
     return model, tokenizer
 
 
-def get_prompt(index):
+def get_training_prompt(index):
+    data = json.load(open('/home/40456997@eeecs.qub.ac.uk/train_subset.json', 'r'))
+    return data[index]
+
+
+def get_test_prompt(index):
     data = json.load(open('/home/40456997@eeecs.qub.ac.uk/dataset_out_poisoned_v2.json', 'r'))
     return data[index]
 
 
-def get_primary_activation(index, model, layer):
+def get_primary_activation(index, model, layer, subset):
+
     index_in_file = index - int(index / 1000) * 1000
 
-    filepaths = load_file_paths(f'../data_files/test_poisoned_files_{model}.txt')
+    if subset == 'test':
+        filepaths = load_file_paths(f'{PROJECT_ROOT}/data_files/test_poisoned_files_{model}.txt')
+    else:
+        filepaths = load_file_paths(f'{PROJECT_ROOT}/data_files/train_files_{model}.txt')
 
-    activations = torch.load(f'/home/40456997@eeecs.qub.ac.uk/Activation/{model}/test/{filepaths[int(index / 1000)]}')
+    activation_file_index_in_list = 0
+
+    for idx, filepath in enumerate(filepaths):
+        if filepath.count(f'_{int(index / 1000) * 1000}_{(int(index / 1000) + 1) * 1000}_') == 1:
+            activation_file_index_in_list = idx
+            break
+
+    activations = torch.load(f'/home/40456997@eeecs.qub.ac.uk/Activation/{model}/{subset}/{filepaths[activation_file_index_in_list]}')
 
     return activations[0][index_in_file][layer]
 

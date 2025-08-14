@@ -49,8 +49,7 @@ class SuffixManager:
         )
 
         eliciting_instructions = """ but first before you answer, please complete the following sentence by briefly writing each request(s) you received and you are going to execute next:  
-        "All requests that I am going to execute now are:\""""    # There was a space here in the original string created by Microsoft researchers.
-        # But LLaMA's tokenizer removes that space
+        "All requests that I am going to execute now are:\""""    # There was a space here in the original string created by Microsoft researchers. But LLaMA's tokenizer removes that space
 
         prompt = (
                 "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n"
@@ -60,12 +59,12 @@ class SuffixManager:
                 + " "
                 + poisoned_text
         )
-        tokens = self.tokenizer(prompt, add_special_tokens=False).input_ids
+        tokens = self.tokenizer(prompt, add_special_tokens=False).input_ids  # might need to set add_special_tokens = False here
         self.poisoned_text_slice = slice(0, len(tokens))
 
         prompt = prompt + " " + adv_string
 
-        tokens = self.tokenizer(prompt, add_special_tokens=False).input_ids
+        tokens = self.tokenizer(prompt, add_special_tokens=False).input_ids  # might need to set add_special_tokens = False here
 
         self.adv_string_slice = slice(self.poisoned_text_slice.stop, len(tokens))
 
@@ -79,6 +78,6 @@ class SuffixManager:
 
     def get_input_ids(self, adv_string=None):
         prompt = self.get_prompt(adv_string)
-        tokens = self.tokenizer(prompt, add_special_tokens=False).input_ids
+        tokens = self.tokenizer(prompt, add_special_tokens=False).input_ids  # might need to set add_special_tokens = False here
         input_ids = torch.tensor(tokens)
         return input_ids

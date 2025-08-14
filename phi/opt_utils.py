@@ -116,7 +116,7 @@ def token_gradients(custom_model, input_ids, input_slice, target, primary_activa
     del hidden_states
     gc.collect()
 
-    return grad, losses, logits, one_hot
+    return grad, losses
 
 
 def sample_control(control_tokens, grad, batch_size, topk=256, not_allowed_tokens=None):
@@ -166,7 +166,7 @@ def get_filtered_cands(tokenizer, control_cand, filter_cand=True, curr_control=N
     encoded_again might not be equal to encoded_s
 
     They might differ in length and/or content. Therefore, this function ensures each candidate has same length
-    after decoding and re-encoding. The contents might still be different.
+    after decoding and encoding.
 
     """
 
@@ -174,8 +174,10 @@ def get_filtered_cands(tokenizer, control_cand, filter_cand=True, curr_control=N
 
     for i in range(control_cand.shape[0]):
         decoded_str = tokenizer.decode(control_cand[i], skip_special_tokens=True)
+        re_encoded = tokenizer(decoded_str, add_special_tokens=False).input_ids
+
         if filter_cand:
-            if decoded_str != curr_control and len(tokenizer(decoded_str, add_special_tokens=False).input_ids) == len(control_cand[i]):
+            if decoded_str != curr_control:  # without filtering based on length for now
                 cands.append(decoded_str)
             else:
                 count += 1
@@ -291,17 +293,33 @@ def load_model_and_tokenizer(model_path, torch_dtype=torch.bfloat16, device='cud
     return model, tokenizer
 
 
-def get_prompt(index):
+def get_training_prompt(index):
+    data = json.load(open('/home/40456997@eeecs.qub.ac.uk/train_subset.json', 'r'))
+    return data[index]
+
+
+def get_test_prompt(index):
     data = json.load(open('/home/40456997@eeecs.qub.ac.uk/dataset_out_poisoned_v2.json', 'r'))
     return data[index]
 
 
-def get_primary_activation(index, model, layer):
+def get_primary_activation(index, model, layer, subset):
+
     index_in_file = index - int(index / 1000) * 1000
 
-    filepaths = load_file_paths(f'{PROJECT_ROOT}/data_files/test_poisoned_files_{model}.txt')
+    if subset == 'test':
+        filepaths = load_file_paths(f'{PROJECT_ROOT}/data_files/test_poisoned_files_{model}.txt')
+    else:
+        filepaths = load_file_paths(f'{PROJECT_ROOT}/data_files/train_files_{model}.txt')
 
-    activations = torch.load(f'/home/40456997@eeecs.qub.ac.uk/Activation/{model}/test/{filepaths[int(index / 1000)]}')
+    activation_file_index_in_list = 0
+
+    for idx, filepath in enumerate(filepaths):
+        if filepath.count(f'_{int(index / 1000) * 1000}_{(int(index / 1000) + 1) * 1000}_') == 1:
+            activation_file_index_in_list = idx
+            break
+
+    activations = torch.load(f'/home/40456997@eeecs.qub.ac.uk/Activation/{model}/{subset}/{filepaths[activation_file_index_in_list]}')
 
     return activations[0][index_in_file][layer]
 
