@@ -4,39 +4,88 @@ from utils.load_file_paths import load_file_paths
 import numpy as np
 import os
 from collections import defaultdict
-from constants import LAYERS_PER_MODEL, ROOT_DIR
+from constants import PROJECT_ROOT, LAYERS_PER_MODEL, ROOT_DIR
+import torch
+from adv_training.logistic_regression import LogisticRegression
 
 
 np.set_printoptions(suppress=True, linewidth=10000)
 
-model = 'llama3_8b'
+model = 'phi3'
 
-
-def test(test_files_path, num_layer):
+def test_adv_trained_model(test_files_path, num_layer):
 
     test_files = load_file_paths(test_files_path)
 
-    # Test the linear model on a small subset of activations
-    dataset = ActivationsDatasetDynamicPrimaryText(
-        test_files[:2],
-        root_dir=ROOT_DIR[model],
-        num_layers=(num_layer, num_layer)
-    )
+    linear_model = LogisticRegression(input_dim=3072)
+    linear_model.load_state_dict(torch.load(os.path.join(PROJECT_ROOT, 'adv_trained_linear_probes', model, str(num_layer), 'model.pt')))
 
-    diff = []
+    linear_model.eval()
 
-    for primary, text in dataset:
-        diff.append((text - primary).flatten().float().numpy())
+    total_prompts = 31134
+    poisoned_predicted = 0
 
-    linear_model = pickle.load(open(os.path.join('../trained_linear_probes_microsoft', model, str(num_layer), 'model.pickle'), 'rb'))
-    predict = linear_model.predict(diff)
+    for i in range(0, len(test_files), 10):
 
-    poisoned_predicted = np.sum(predict)
+        # Test the linear model on a small subset of activations
+        dataset = ActivationsDatasetDynamicPrimaryText(
+            test_files[i: i + 10],
+            root_dir=ROOT_DIR[model],
+            num_layers=(num_layer, num_layer)
+        )
+
+        diff = []
+
+        for primary, text in dataset:
+            diff.append((text - primary).flatten().float())
+
+        diff = torch.stack(diff)
+
+        with torch.no_grad():
+            logits = linear_model(diff)
+            probs = torch.sigmoid(logits)
+
+        predictions = (probs >= .5).long()
+        poisoned_predicted += predictions.count_nonzero().item()
 
     if "clean" in test_files_path:
-        print(f"Test accuracy: {(len(dataset) - poisoned_predicted) / len(dataset) * 100:.2f}%")
+        print(f"Test accuracy: {(total_prompts - poisoned_predicted) / total_prompts * 100:.2f}%")
     else:
-        print(f"Test accuracy: {poisoned_predicted / len(dataset) * 100:.2f}%")
+        print(f"Test accuracy: {poisoned_predicted / total_prompts * 100:.2f}%")
+
+
+def test_microsoft_trained_model(test_files_path, num_layer):
+
+    test_files = load_file_paths(test_files_path)
+
+    total_prompts = 31134
+    poisoned_predicted = 0
+
+    linear_model = pickle.load(
+        open(os.path.join(f'{PROJECT_ROOT}/trained_linear_probes_microsoft', model, str(num_layer), 'model.pickle'),
+             'rb'))
+
+    for i in range(0, len(test_files), 10):
+
+        # Test the linear model on a small subset of activations
+        dataset = ActivationsDatasetDynamicPrimaryText(
+            test_files[i : i + 10],
+            root_dir=ROOT_DIR[model],
+            num_layers=(num_layer, num_layer)
+        )
+
+        diff = []
+
+        for primary, text in dataset:
+            diff.append((text - primary).flatten().float().numpy())
+
+        predict = linear_model.predict(diff)
+        poisoned_predicted += np.sum(predict)
+
+    if "clean" in test_files_path:
+        print(f"Test accuracy: {(total_prompts - poisoned_predicted) / total_prompts * 100:.2f}%")
+    else:
+        print(f"Test accuracy: {poisoned_predicted / total_prompts * 100:.2f}%")
 
 
 def count_microsoft_model_confidence(test_files_path, num_layer):
@@ -139,7 +188,12 @@ def check_model_consistency(test_files_path):
 
 
 if __name__ == '__main__':
-    # test(f'data_files/test_poisoned_files_{model}.txt', 0)
     # count_microsoft_model_confidence(f'data_files/test_poisoned_files_{model}.txt', 0)
 
-    check_model_consistency(f'../data_files/test_poisoned_files_{model}.txt')
+    # check_model_consistency(f'../data_files/test_poisoned_files_{model}.txt')
+
+    num_layer = 23
+    filepath = f'{PROJECT_ROOT}/data_files/test_poisoned_files_{model}.txt'
+
+    test_microsoft_trained_model(filepath, num_layer)
+    test_adv_trained_model(filepath, num_layer)

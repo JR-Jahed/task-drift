@@ -3,3 +3,4 @@
 __pycache__
 .idea
 /trained_linear_probes_microsoft
+/adv_trained_linear_probes
