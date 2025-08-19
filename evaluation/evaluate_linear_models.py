@@ -4,7 +4,7 @@ from utils.load_file_paths import load_file_paths
 import numpy as np
 import os
 from collections import defaultdict
-from constants import PROJECT_ROOT, LAYERS_PER_MODEL, ROOT_DIR
+from constants import PROJECT_ROOT, LAYERS_PER_MODEL, ROOT_DIR_TEST
 import torch
 from adv_training.logistic_regression import LogisticRegression
 
@@ -12,6 +12,7 @@ from adv_training.logistic_regression import LogisticRegression
 np.set_printoptions(suppress=True, linewidth=10000)
 
 model = 'phi3'
+
 
 def test_adv_trained_model(test_files_path, num_layer):
 
@@ -30,7 +31,7 @@ def test_adv_trained_model(test_files_path, num_layer):
         # Test the linear model on a small subset of activations
         dataset = ActivationsDatasetDynamicPrimaryText(
             test_files[i: i + 10],
-            root_dir=ROOT_DIR[model],
+            root_dir=ROOT_DIR_TEST[model],
             num_layers=(num_layer, num_layer)
         )
 
@@ -70,7 +71,7 @@ def test_microsoft_trained_model(test_files_path, num_layer):
         # Test the linear model on a small subset of activations
         dataset = ActivationsDatasetDynamicPrimaryText(
             test_files[i : i + 10],
-            root_dir=ROOT_DIR[model],
+            root_dir=ROOT_DIR_TEST[model],
             num_layers=(num_layer, num_layer)
         )
 
@@ -107,7 +108,7 @@ def count_microsoft_model_confidence(test_files_path, num_layer):
 
         dataset = ActivationsDatasetDynamicPrimaryText(
             test_files[i: i + 1],
-            root_dir=ROOT_DIR[model],
+            root_dir=ROOT_DIR_TEST[model],
             num_layers=(num_layer, num_layer)
         )
 
@@ -160,7 +161,7 @@ def check_model_consistency(test_files_path):
             # Test the linear model on a small subset of activations
             dataset = ActivationsDatasetDynamicPrimaryText(
                 test_files[i: i + 1],
-                root_dir=ROOT_DIR[model],
+                root_dir=ROOT_DIR_TEST[model],
                 num_layers=(num_layer, num_layer)
             )
 
@@ -192,8 +193,29 @@ if __name__ == '__main__':
 
     # check_model_consistency(f'../data_files/test_poisoned_files_{model}.txt')
 
-    num_layer = 23
-    filepath = f'{PROJECT_ROOT}/data_files/test_poisoned_files_{model}.txt'
+    clean_filepath = f'{PROJECT_ROOT}/data_files/test_clean_files_{model}.txt'
+    poisoned_filepath = f'{PROJECT_ROOT}/data_files/test_poisoned_files_{model}.txt'
 
-    test_microsoft_trained_model(filepath, num_layer)
-    test_adv_trained_model(filepath, num_layer)
+    for num_layer in LAYERS_PER_MODEL[model]:
+    # for num_layer in [31]:
+
+        print(f"Evaluating Layer {num_layer}\n")
+
+        print("On clean dataset")
+        print("Microsoft trained linear models:")
+        test_microsoft_trained_model(clean_filepath, num_layer)
+
+        print("Adversarially trained linear models:")
+        test_adv_trained_model(clean_filepath, num_layer)
+
+        # ------------------------------------------------------
+        print("-----------------------------------------")
+
+        print("On poisoned dataset")
+        print("Microsoft trained linear models:")
+        test_microsoft_trained_model(poisoned_filepath, num_layer)
+
+        print("Adversarially trained linear models:")
+        test_adv_trained_model(poisoned_filepath, num_layer)
+
+        print("------------------------------------------------------------------\n\n")

@@ -66,6 +66,9 @@ class ActivationsDatasetDynamic(Dataset):
         for file_ in tqdm(self.dataset_files):
             file_name = os.path.join(self.root_dir, file_)
 
+            if not os.path.exists(file_name):
+                continue
+
             # Load the activation tensor from the current file.
             activation_file = torch.load(file_name)
 
@@ -84,6 +87,9 @@ class ActivationsDatasetDynamic(Dataset):
 
             # Append the sliced activation tensor to the list.
             activations.append(activation)
+
+        if len(activations) == 0:
+            return torch.empty(3, 0, 0, 0)
 
         # Concatenate all activation tensors in the list along the first dimension.
         return torch.cat(activations, dim=1)
