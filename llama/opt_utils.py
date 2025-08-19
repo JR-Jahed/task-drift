@@ -176,8 +176,7 @@ def get_filtered_cands(tokenizer, control_cand, new_batch_size=512, filter_cand=
         re_encoded = tokenizer(" " + decoded_str, add_special_tokens=False).input_ids
 
         if filter_cand:
-            # No filtering based on length
-            if decoded_str != curr_control: # and len(control_cand[i]) == len(re_encoded):
+            if decoded_str != curr_control and len(control_cand[i]) == len(re_encoded):
                 cands.append(decoded_str)
             else:
                 count += 1
@@ -297,14 +296,14 @@ def load_model_and_tokenizer(model_path, torch_dtype=torch.bfloat16, device='cud
     return model, tokenizer
 
 
-def get_training_prompt(index):
-    data = json.load(open('/home/40456997@eeecs.qub.ac.uk/train_subset.json', 'r'))
-    return data[index]
+def get_training_prompts():
+    training_prompts = json.load(open('/home/40456997@eeecs.qub.ac.uk/train_subset.json', 'r'))
+    return training_prompts
 
 
-def get_test_prompt(index):
-    data = json.load(open('/home/40456997@eeecs.qub.ac.uk/dataset_out_poisoned_v2.json', 'r'))
-    return data[index]
+def get_test_prompts():
+    test_prompts = json.load(open('/home/40456997@eeecs.qub.ac.uk/dataset_out_poisoned_v2.json', 'r'))
+    return test_prompts
 
 
 def get_primary_activation(index, model, layer, subset):

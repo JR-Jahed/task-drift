@@ -4,7 +4,7 @@ import numpy as np
 import time
 import pickle
 from phi.custom_model import CustomModel
-from phi.opt_utils import get_nonascii_toks, token_gradients, sample_control, get_filtered_cands, get_logits, load_model_and_tokenizer, get_training_prompt, get_primary_activation
+from phi.opt_utils import get_nonascii_toks, token_gradients, sample_control, get_filtered_cands, get_logits, load_model_and_tokenizer, get_training_prompts, get_primary_activation
 from phi.suffix_manager import SuffixManager
 import random
 import os
@@ -71,9 +71,9 @@ def get_primary_activations(prompt_index, device, layers):
     return primary_activations
 
 
-def add_next_prompt(prompt_indices, texts, primary_activations_all_prompts, device, layers):
+def add_next_prompt(training_prompts, prompt_indices, texts, primary_activations_all_prompts, device, layers):
     # Add next prompt
-    texts.append(get_training_prompt(prompt_indices[len(texts)]))
+    texts.append(training_prompts(prompt_indices[len(texts)]))
 
     primary_activations = get_primary_activations(prompt_indices[len(primary_activations_all_prompts)], device, layers)
     # Add primary activations of this prompt
@@ -115,6 +115,7 @@ def run_attack(
         model,
         custom_model,
         linear_models,
+        training_prompts,
         prompt_indices,
         texts,
         adv_string_init,
@@ -177,7 +178,7 @@ def run_attack(
             losses_all_prompts_all_layers.append(losses_current_prompt_all_layers)
 
             if coordinate_grad_all_prompts is None:
-                coordinate_grad_all_prompts = coordinate_grad_current_prompt
+                coordinate_grad_all_prompts = coordinate_grad_current_prompt  # shape: (num_tokens, vocab_size)
             else:
                 coordinate_grad_all_prompts += coordinate_grad_current_prompt
 
@@ -212,7 +213,9 @@ def run_attack(
             }
         )
 
-        if i == num_steps or len(texts) >= 10 or (time.time() - start_time >= 90 * 60 and len(texts) >= 5):
+        elapsed_time = time.time() - start_time
+
+        if i == num_steps or len(texts) >= 20 or elapsed_time >= 3 * 60 * 60 or (elapsed_time >= 2 * 60 * 60 and len(texts) >= 10):
             break
 
         # Step 3. Sample a batch of new tokens based on the coordinate gradient.
@@ -275,11 +278,14 @@ def run_attack(
                     del logits_current_layer
 
                 if losses_all_prompts_all_layers is None:
-                    losses_all_prompts_all_layers = losses_current_prompt_all_layers
+                    losses_all_prompts_all_layers = losses_current_prompt_all_layers  # shape: (batch_size, 1)
                 else:
                     losses_all_prompts_all_layers += losses_current_prompt_all_layers
                 gc.collect()
                 torch.cuda.empty_cache()
+
+            # Average across prompts
+            losses_current_prompt_all_layers /= len(texts)
 
             best_new_adv_suffix_id = losses_all_prompts_all_layers.argmin()
             best_new_adv_suffix = new_adv_suffix[best_new_adv_suffix_id]
@@ -290,19 +296,19 @@ def run_attack(
 
             if percentage_of_successful_prompts_all_layers(probs_all_prompts_all_layers, confidence_threshold=.7) >= .8:
                 # If the attack is successful on 80% or more prompts, add next prompt
-                add_next_prompt(prompt_indices, texts, primary_activations_all_prompts, device, layers)
+                add_next_prompt(training_prompts, prompt_indices, texts, primary_activations_all_prompts, device, layers)
                 last_added = i
 
             if len(texts) >= 5 and i - last_added == 10:
                 # If there are already 5 or more prompts and the latest one or any previous one is being recalcitrant
                 # and the suffix is not working on it, it might be helpful to add a new prompt
-                add_next_prompt(prompt_indices, texts, primary_activations_all_prompts, device, layers)
+                add_next_prompt(training_prompts, prompt_indices, texts, primary_activations_all_prompts, device, layers)
                 last_added = i
             elif len(texts) >= 3 and i - last_added == 20:
-                add_next_prompt(prompt_indices, texts, primary_activations_all_prompts, device, layers)
+                add_next_prompt(training_prompts, prompt_indices, texts, primary_activations_all_prompts, device, layers)
                 last_added = i
             elif len(texts) == 2 and i - last_added == 30:
-                add_next_prompt(prompt_indices, texts, primary_activations_all_prompts, device, layers)
+                add_next_prompt(training_prompts, prompt_indices, texts, primary_activations_all_prompts, device, layers)
                 last_added = i
 
 
@@ -320,17 +326,24 @@ if __name__ == "__main__":
         r"""$ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $""",
         r"""* * * * * * * * * * * * * * * * * * * *""",
         r"""& @ ^ # | & @ ^ # | & @ ^ # | & @ ^ # |""",
+        r"""| < { ] > [ } + % ? . ) / ~ ( , - = _ @""",
+        r"""& & : : $ $ ; ; _ _ # # ! ! + + ? ? = =""",
+        r"""# # # # # & & & & & @ @ @ @ @ ? ? ? ? ?""",
+        r"""* ) # ~ / | > } ! @ [ = _ ( { : ^ ) ] -""",
+        r"""yes yes yes yes yes yes yes yes yes yes yes yes yes yes yes yes yes yes yes yes""",
+        r"""no no no no no no no no no no no no no no no no no no no no""",
         r"""ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok""",
-        r""""""
+        r"""hi hi hi hi hi hi hi hi hi hi hi hi hi hi hi hi hi hi hi hi"""
     ]
 
     model, tokenizer = load_model_and_tokenizer(model_path)
-
     print(model.dtype)
+    
+    training_prompts = get_training_prompts()
 
     num_steps = 500
-    topk = 64
-    batch_size = 64
+    topk = 256
+    batch_size = 512
     allow_non_ascii = False  # you can set this to True to use unicode tokens
 
 
@@ -353,18 +366,17 @@ if __name__ == "__main__":
     target = torch.tensor([0], dtype=torch.float32)
     target = target.to(device)
 
-    result_path = f'optimisation_result.json'
+    result_path = f'{PROJECT_ROOT}/opt_results/optimisation_result.json'
 
     start_idx = 0
 
     if os.path.exists(result_path):
         optimisation_result = json.load(open(result_path, 'r'))
-        start_idx = len(optimisation_result['Result List'])
+        start_idx = len(optimisation_result['Result list'])
     else:
         optimisation_result = {
             "Result list": []
         }
-
 
     for idx in range(start_idx, len(adv_string_init_list)):
 
@@ -374,7 +386,7 @@ if __name__ == "__main__":
         prompt_indices = random.sample(range(100000), 50)
 
         # Get the text from the train dataset
-        texts = [get_training_prompt(prompt_indices[0])]
+        texts = [training_prompts[prompt_indices[0]]]
 
         # A list of dict
         primary_activations_all_prompts = [get_primary_activations(prompt_indices[0], device, layers)]
@@ -388,21 +400,22 @@ if __name__ == "__main__":
         )
 
         result_dict = run_attack(
-            tokenizer,
-            model,
-            custom_model,
-            linear_models,
-            prompt_indices,
-            texts,
-            adv_string_init,
-            allow_non_ascii,
-            num_steps,
-            primary_activations_all_prompts,
-            device,
-            layers,
-            batch_size,
-            topk,
-            target
+            tokenizer=tokenizer,
+            model=model,
+            custom_model=custom_model,
+            linear_models=linear_models,
+            training_prompts=training_prompts,
+            prompt_indices=prompt_indices,
+            texts=texts,
+            adv_string_init=adv_string_init,
+            allow_non_ascii=allow_non_ascii,
+            num_steps=num_steps,
+            primary_activations_all_prompts=primary_activations_all_prompts,
+            device=device,
+            layers=layers,
+            batch_size=batch_size,
+            topk=topk,
+            target=target,
         )
 
         optimisation_result['Result list'][-1]['Result'] = result_dict

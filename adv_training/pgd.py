@@ -44,3 +44,49 @@ def pgd_torch_linear(model, primary, poisoned, epsilon=0.1, alpha=0.01, steps=20
         x.requires_grad_(True)
 
     return x.detach()  # adv_poisoned (1D)
+
+
+
+@torch.no_grad()
+def clamp_linf_(x, x0, eps):
+    # In-place projection onto L∞ ball of radius eps around x0
+    x.copy_(torch.max(torch.min(x, x0 + eps), x0 - eps))
+
+
+def pgd_batch_torch_linear(
+        model,
+        primary,
+        poisoned,
+        epsilon=0.1,
+        alpha=0.01,
+        steps=20,
+        target_label=0,
+):
+    device = next(model.parameters()).device
+    dtype = next(model.parameters()).dtype
+    primary = primary.to(device=device, dtype=dtype)
+
+    x0 = poisoned.to(device=device, dtype=dtype).detach()
+    x = x0.clone().detach().requires_grad_(True)
+    y_t = torch.full((primary.size(0),), float(target_label), device=device, dtype=dtype)
+    criterion = nn.BCEWithLogitsLoss()
+
+    for step in range(steps):
+        x.requires_grad_(True)
+
+        delta = (x - primary)    # shape: (B, D)
+        logits = model(delta)    # shape: (B, 1)
+        logits = logits.squeeze(-1)   # shape: (B)
+
+        loss = criterion(logits, y_t)
+
+        # gradient wrt x only (no model param grads)
+        grad_x = torch.autograd.grad(loss, x, only_inputs=True, retain_graph=False, create_graph=False)[0]
+
+        with torch.no_grad():
+            x.add_(-alpha * torch.sign(grad_x))
+            clamp_linf_(x, x0, epsilon)
+
+        x.requires_grad_(False)
+
+    return x.detach()   # shape: (B, D)
