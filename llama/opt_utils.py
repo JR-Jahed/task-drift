@@ -4,12 +4,10 @@ import numpy as np
 import gc
 from transformers import AutoTokenizer, AutoModelForCausalLM, AutoConfig
 import json
-from utils.load_file_paths import load_file_paths
 from gradient_hook_manager import GradientHookManager
 import sys
 import os
 import random
-from constants import PROJECT_ROOT
 
 
 def get_embedding_matrix(model):
@@ -304,37 +302,6 @@ def get_training_prompts():
 def get_test_prompts():
     test_prompts = json.load(open('/home/40456997@eeecs.qub.ac.uk/dataset_out_poisoned_v2.json', 'r'))
     return test_prompts
-
-
-def get_primary_activation(index, model, layer, subset):
-
-    index_in_file = index - int(index / 1000) * 1000
-
-    if subset == 'test':
-        filepaths = load_file_paths(f'{PROJECT_ROOT}/data_files/test_poisoned_files_{model}.txt')
-    else:
-        filepaths = load_file_paths(f'{PROJECT_ROOT}/data_files/train_files_{model}.txt')
-
-    activation_file_index_in_list = 0
-
-    for idx, filepath in enumerate(filepaths):
-        if filepath.count(f'_{int(index / 1000) * 1000}_{(int(index / 1000) + 1) * 1000}_') == 1:
-            activation_file_index_in_list = idx
-            break
-
-    activations = torch.load(f'/home/40456997@eeecs.qub.ac.uk/Activation/{model}/{subset}/{filepaths[activation_file_index_in_list]}')
-
-    return activations[0][index_in_file][layer]
-
-
-def get_poisoned_activation(index, model, layer):
-    index_in_file = index - int(index / 1000) * 1000
-
-    filepaths = load_file_paths(f'../data_files/test_poisoned_files_{model}.txt')
-
-    activations = torch.load(f'/home/40456997@eeecs.qub.ac.uk/Activation/{model}/test/{filepaths[int(index / 1000)]}')
-
-    return activations[1][index_in_file][layer]
 
 
 def get_last_token_activations_single(text, tokenizer, model):

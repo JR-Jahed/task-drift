@@ -197,7 +197,6 @@ if __name__ == '__main__':
     poisoned_filepath = f'{PROJECT_ROOT}/data_files/test_poisoned_files_{model}.txt'
 
     for num_layer in LAYERS_PER_MODEL[model]:
-    # for num_layer in [31]:
 
         print(f"Evaluating Layer {num_layer}\n")
 
@@ -208,7 +207,6 @@ if __name__ == '__main__':
         print("Adversarially trained linear models:")
         test_adv_trained_model(clean_filepath, num_layer)
 
-        # ------------------------------------------------------
         print("-----------------------------------------")
 
         print("On poisoned dataset")
@@ -218,4 +216,4 @@ if __name__ == '__main__':
         print("Adversarially trained linear models:")
         test_adv_trained_model(poisoned_filepath, num_layer)
 
-        print("------------------------------------------------------------------\n\n")
+        print("----------------------------------------------------------------------------------------\n\n")

@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader, TensorDataset
 from dataset import ActivationsDatasetDynamic, ActivationsDatasetDynamicPrimaryText
 from utils.load_file_paths import load_file_paths
 from pgd import pgd_torch_linear, pgd_batch_torch_linear
-from constants import PROJECT_ROOT, ROOT_DIR_TRAIN, ROOT_DIR_VAL
+from constants import PROJECT_ROOT, ROOT_DIR_TRAIN, ROOT_DIR_VAL, LAYERS_PER_MODEL
 import time
 from logistic_regression import LogisticRegression
 import random
@@ -154,7 +154,7 @@ def train_model_pt(
 
             model.train()
 
-            for step, (primary, clean, poisoned) in enumerate(train_triplet_loader):
+            for num_batch, (primary, clean, poisoned) in enumerate(train_triplet_loader):
                 primary = primary.flatten(1).float().to(device)  # [B, D]
                 clean = clean.flatten(1).float().to(device)  # [B, D]
                 poisoned = poisoned.flatten(1).float().to(device)  # [B, D]
@@ -188,7 +188,7 @@ def train_model_pt(
                 loss.backward()
                 optimizer.step()
 
-                if step > 0 and step % validate_every == 0:
+                if num_batch > 0 and num_batch % validate_every == 0:
                     model.eval()
                     correct = 0
                     total = 0
@@ -213,7 +213,7 @@ def train_model_pt(
                     else:
                         patience_counter += 1
                         if patience_counter >= patience and stop_training is False:
-                            print(f"Early stopping triggered   step: {step:02}", end="  ")
+                            print(f"Early stopping triggered   num_batch: {num_batch:02}", end="  ")
                             stop_training = True
 
             print(f"Validation accuracy: {val_acc * 100:.2f}%")
@@ -233,7 +233,7 @@ if __name__ == "__main__":
     root_dir_val = ROOT_DIR_VAL[MODEL]
 
 
-    for num_layer in [23, 15, 7, 0]:
+    for num_layer in LAYERS_PER_MODEL[MODEL]:
 
         os.makedirs(os.path.join(OUTPUT_DIR, str(num_layer)), exist_ok=True)
         layer_output_dir = os.path.join(OUTPUT_DIR, str(num_layer))

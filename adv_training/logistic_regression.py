@@ -7,5 +7,5 @@ class LogisticRegression(nn.Module):
         self.linear = nn.Linear(input_dim, 1)
 
     def forward(self, x):
-        # x: [B, D] -> logits [B, 1]
+        # x: [B, D] -> logits [B]
         return self.linear(x).squeeze(-1)

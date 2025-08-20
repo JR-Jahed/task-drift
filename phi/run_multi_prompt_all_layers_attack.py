@@ -4,8 +4,9 @@ import numpy as np
 import time
 import pickle
 from phi.custom_model import CustomModel
-from phi.opt_utils import get_nonascii_toks, token_gradients, sample_control, get_filtered_cands, get_logits, load_model_and_tokenizer, get_training_prompts, get_primary_activation
-from phi.suffix_manager import SuffixManager
+from opt_utils import get_nonascii_toks, token_gradients, sample_control, get_filtered_cands, get_logits, load_model_and_tokenizer, get_training_prompts
+from suffix_manager import SuffixManager
+from utils.load_file_paths import load_file_paths
 import random
 import os
 import sys
@@ -62,6 +63,27 @@ def percentage_of_successful_prompts_all_layers(probs_all_prompts_all_layers, co
     return cnt / len(probs_all_prompts_all_layers)
 
 
+def get_primary_activation(index, model, layer, subset):
+
+    index_in_file = index - int(index / 1000) * 1000
+
+    if subset == 'test':
+        filepaths = load_file_paths(f'{PROJECT_ROOT}/data_files/test_poisoned_files_{model}.txt')
+    else:
+        filepaths = load_file_paths(f'{PROJECT_ROOT}/data_files/train_files_{model}.txt')
+
+    activation_file_index_in_list = 0
+
+    for idx, filepath in enumerate(filepaths):
+        if filepath.count(f'_{int(index / 1000) * 1000}_{(int(index / 1000) + 1) * 1000}_') == 1:
+            activation_file_index_in_list = idx
+            break
+
+    activations = torch.load(f'/home/40456997@eeecs.qub.ac.uk/Activation/{model}/{subset}/{filepaths[activation_file_index_in_list]}')
+
+    return activations[0][index_in_file][layer]
+
+
 def get_primary_activations(prompt_index, device, layers):
 
     primary_activations = {
@@ -103,11 +125,6 @@ def check_misclassification(custom_model, model, linear_models, adv_suffix, suff
         probs.append(prob[0].tolist())
 
     return labels, probs
-
-
-
-
-
 
 
 def run_attack(
