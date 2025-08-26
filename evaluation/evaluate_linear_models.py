@@ -50,9 +50,9 @@ def test_adv_trained_model(test_files_path, num_layer):
         poisoned_predicted += predictions.count_nonzero().item()
 
     if "clean" in test_files_path:
-        print(f"Test accuracy: {(total_prompts - poisoned_predicted) / total_prompts * 100:.2f}%")
+        print(f"Correct: {total_prompts - poisoned_predicted}  Test accuracy: {(total_prompts - poisoned_predicted) / total_prompts * 100:.2f}%")
     else:
-        print(f"Test accuracy: {poisoned_predicted / total_prompts * 100:.2f}%")
+        print(f"Correct: {poisoned_predicted}  Test accuracy: {poisoned_predicted / total_prompts * 100:.2f}%")
 
 
 def test_microsoft_trained_model(test_files_path, num_layer):
@@ -66,11 +66,14 @@ def test_microsoft_trained_model(test_files_path, num_layer):
         open(os.path.join(f'{PROJECT_ROOT}/trained_linear_probes_microsoft', model, str(num_layer), 'model.pickle'),
              'rb'))
 
-    for i in range(0, len(test_files), 10):
+    batch_files = 1
+
+
+    for i in range(0, len(test_files), batch_files):
 
         # Test the linear model on a small subset of activations
         dataset = ActivationsDatasetDynamicPrimaryText(
-            test_files[i : i + 10],
+            test_files[i : i + batch_files],
             root_dir=ROOT_DIR_TEST[model],
             num_layers=(num_layer, num_layer)
         )
@@ -84,9 +87,9 @@ def test_microsoft_trained_model(test_files_path, num_layer):
         poisoned_predicted += np.sum(predict)
 
     if "clean" in test_files_path:
-        print(f"Test accuracy: {(total_prompts - poisoned_predicted) / total_prompts * 100:.2f}%")
+        print(f"Correct: {total_prompts - poisoned_predicted}  Test accuracy: {(total_prompts - poisoned_predicted) / total_prompts * 100:.2f}%")
     else:
-        print(f"Test accuracy: {poisoned_predicted / total_prompts * 100:.2f}%")
+        print(f"Correct: {poisoned_predicted}  Test accuracy: {poisoned_predicted / total_prompts * 100:.2f}%")
 
 
 def count_microsoft_model_confidence(test_files_path, num_layer):
@@ -204,8 +207,8 @@ if __name__ == '__main__':
         print("Microsoft trained linear models:")
         test_microsoft_trained_model(clean_filepath, num_layer)
 
-        print("Adversarially trained linear models:")
-        test_adv_trained_model(clean_filepath, num_layer)
+        # print("Adversarially trained linear models:")
+        # test_adv_trained_model(clean_filepath, num_layer)
 
         print("-----------------------------------------")
 
@@ -213,7 +216,7 @@ if __name__ == '__main__':
         print("Microsoft trained linear models:")
         test_microsoft_trained_model(poisoned_filepath, num_layer)
 
-        print("Adversarially trained linear models:")
-        test_adv_trained_model(poisoned_filepath, num_layer)
+        # print("Adversarially trained linear models:")
+        # test_adv_trained_model(poisoned_filepath, num_layer)
 
         print("----------------------------------------------------------------------------------------\n\n")

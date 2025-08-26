@@ -4,7 +4,7 @@ import numpy as np
 import gc
 from transformers import AutoTokenizer, AutoModelForCausalLM, AutoConfig
 import json
-from gradient_hook_manager import GradientHookManager
+from phi.gradient_hook_manager import GradientHookManager
 
 
 
@@ -292,12 +292,12 @@ def load_model_and_tokenizer(model_path, torch_dtype=torch.bfloat16, device='cud
 
 
 def get_training_prompts():
-    training_prompts = json.load(open('/home/40456997@eeecs.qub.ac.uk/train_subset.json', 'r'))
+    training_prompts = json.load(open('/home/40456997@eeecs.qub.ac.uk/Text Dataset/train_subset.json', 'r'))
     return training_prompts
 
 
 def get_test_prompts():
-    test_prompts = json.load(open('/home/40456997@eeecs.qub.ac.uk/dataset_out_poisoned_v2.json', 'r'))
+    test_prompts = json.load(open('/home/40456997@eeecs.qub.ac.uk/Text Dataset/dataset_out_poisoned_v2.json', 'r'))
     return test_prompts
 
 

@@ -3,9 +3,10 @@ import torch.nn as nn
 import numpy as np
 import time
 import pickle
-from phi.custom_model import CustomModel
-from phi.opt_utils import get_nonascii_toks, token_gradients, sample_control, get_filtered_cands, get_logits, load_model_and_tokenizer, get_training_prompts
-from phi.suffix_manager import SuffixManager
+from transformers import AutoModelForCausalLM
+from llama.custom_model import CustomModel
+from llama.opt_utils import get_nonascii_toks, token_gradients, sample_control, get_filtered_cands, get_logits, load_model_and_tokenizer, get_training_prompts
+from llama.suffix_manager import SuffixManager
 from utils.load_file_paths import load_file_paths
 import random
 import os
@@ -14,11 +15,12 @@ import gc
 import json
 from constants import PROJECT_ROOT, LAYER_MAP
 
+
 np.set_printoptions(suppress=True, linewidth=10000)
 torch.set_printoptions(sci_mode=False, linewidth=100000, threshold=float('inf'))
 
 
-model_name = 'phi3'
+model_name = 'llama3_8b'
 
 model_path = f'{PROJECT_ROOT}/loaded_models/{model_name}'
 
@@ -32,6 +34,7 @@ def format_probs(probs):
     probs_str = "[" + ", ".join(formatted_probs) + "]"
 
     return probs_str
+
 
 def format_losses(losses):
     losses_str = "[" + ", ".join([f'{loss:.8f}' for loss in losses]) + "]"
@@ -101,21 +104,22 @@ def add_next_prompt(training_prompts, prompt_indices, texts, primary_activations
     primary_activations_all_prompts.append(primary_activations)
 
 
-def check_misclassification(custom_model, model, linear_models, adv_suffix, suffix_manager, primary_activations):
+def check_misclassification(custom_model, model32, linear_models, adv_suffix, suffix_manager, primary_activations):
     device = custom_model.base_model.get_input_embeddings().weight.device
     input_ids = suffix_manager.get_input_ids(adv_suffix).unsqueeze(0)
     input_ids = input_ids.to(device)
 
     attention_mask = torch.ones_like(input_ids).to(device)
 
-    outputs = model(input_ids=input_ids, attention_mask=attention_mask, output_hidden_states=True)
+    outputs = model32(input_ids=input_ids.to('cpu'), attention_mask=attention_mask.to('cpu'), output_hidden_states=True)
 
     labels = []
     probs = []
 
     for num_layer, linear_model in linear_models.items():
         poisoned_activation = outputs['hidden_states'][num_layer + 1][0, -1].float()
-        delta = (poisoned_activation - primary_activations[num_layer]).detach().cpu().float().numpy().reshape(1, -1)
+        # delta = (poisoned_activation - primary_activations[num_layer]).detach().cpu().float().numpy().reshape(1, -1)   # gpu version
+        delta = (poisoned_activation - primary_activations[num_layer].to('cpu')).detach().cpu().float().numpy().reshape(1, -1)  # cpu version
 
         label = linear_model.predict(delta)
         prob = linear_model.predict_proba(delta)
@@ -126,10 +130,9 @@ def check_misclassification(custom_model, model, linear_models, adv_suffix, suff
     return labels, probs
 
 
-
 def run_attack(
         tokenizer,
-        model,
+        model32,
         custom_model,
         linear_models,
         training_prompts,
@@ -155,6 +158,7 @@ def run_attack(
 
     result_dict = {
         'Iteration log': [],
+        'No suffix found after filtering': False,
         'Total time': 0.0
     }
 
@@ -201,7 +205,7 @@ def run_attack(
 
             labels_current_prompt_all_layers, probs_current_prompt_all_layers = check_misclassification(
                 custom_model,
-                model,
+                model32,
                 linear_models,
                 adv_suffix,
                 suffix_manager,
@@ -247,9 +251,8 @@ def run_attack(
             new_adv_suffix_tokens = sample_control(
                 adv_suffix_tokens,
                 coordinate_grad_all_prompts,
-                batch_size,
-                not_allowed_tokens=not_allowed_tokens,
-                topk=topk
+                topk=topk,
+                not_allowed_tokens=not_allowed_tokens
             )
 
             # Step 3.3 This step ensures all adversarial candidates have the same number of tokens.
@@ -257,9 +260,14 @@ def run_attack(
             new_adv_suffix = get_filtered_cands(
                 tokenizer,
                 new_adv_suffix_tokens,
+                new_batch_size=batch_size,
                 filter_cand=True,
                 curr_control=adv_suffix
             )
+
+            if len(new_adv_suffix) == 0:
+                result_dict['No suffix found after filtering'] = True
+                break
 
             losses_all_prompts_all_layers = None
 
@@ -311,7 +319,7 @@ def run_attack(
 
         if len(texts) < len(prompt_indices):
 
-            if percentage_of_successful_prompts_all_layers(probs_all_prompts_all_layers, confidence_threshold=.7) >= .8:
+            if percentage_of_successful_prompts_all_layers(probs_all_prompts_all_layers, confidence_threshold=.6) >= .8:
                 # If the attack is successful on 80% or more prompts, add next prompt
                 add_next_prompt(training_prompts, prompt_indices, texts, primary_activations_all_prompts, device, layers)
                 last_added = i
@@ -337,32 +345,27 @@ def run_attack(
     return result_dict
 
 
-def run_phi_attack_from_another_file():
-    adv_string_init_list = [
-        r"""$ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $""",
-        r"""* * * * * * * * * * * * * * * * * * * *""",
-        r"""& @ ^ # | & @ ^ # | & @ ^ # | & @ ^ # |""",
-        r"""| < { ] > [ } + % ? . ) / ~ ( , - = _ @""",
-        r"""& & : : $ $ ; ; _ _ # # ! ! + + ? ? = =""",
-        r"""# # # # # & & & & & @ @ @ @ @ ? ? ? ? ?""",
-        r"""* ) # ~ / | > } ! @ [ = _ ( { : ^ ) ] -""",
-        r"""yes yes yes yes yes yes yes yes yes yes yes yes yes yes yes yes yes yes yes yes""",
-        r"""no no no no no no no no no no no no no no no no no no no no""",
-        r"""ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok""",
-        r"""hi hi hi hi hi hi hi hi hi hi hi hi hi hi hi hi hi hi hi hi""",
+def run_llama_attack_from_another_file():
 
-        r"""% % % % % % % % % % % % % % % % % % % %""",
-        r"""+ + + + + + + + + + + + + + + + + + + +""",
-        r"""- - - - - - - - - - - - - - - - - - - -""",
-        r"""= = = = = = = = = = = = = = = = = = = =""",
-        r"""@ @ @ @ @ @ @ @ @ @ @ @ @ @ @ @ @ @ @ @""",
-        r"""O @ ! x @ & @ R $ B @ P @ Q @ T } W @ M""",
-        r"""@ ( t _ z | @ ; y [ v @ $ l j * i @ : r""",
-        r"""# hi @ no @ ! ! ~ < n { s ' ; @ u > c .""",
+    adv_string_init_list = [
+        r"""$_$_$_$_$_$_$_$_$_$_$_$_$_$_$_$_$_$_$_$""",
+        r"""*_*_*_*_*_*_*_*_*_*_*_*_*_*_*_*_*_*_*_*""",
+        r"""&_@_^_#_|_&_@_^_#_|_&_@_^_#_|_&_@_^_#_|""",
+        r"""|_<_{_]_>_[_}_+_%_?_._)_/_~_(_,_-_=_%_@""",
+        r"""&_&_:_:_$_$_;_;_%_%_#_#_!_!_+_+_?_?_=_=""",
+        r"""#_#_#_#_#_&_&_&_&_&_@_@_@_@_@_?_?_?_?_?""",
+        r"""*_)_#_~_/_|_>_}_!_@_[_=_%_(_{_:_^_)_]_-""",
+        r"""yes_yes_yes_yes_yes_yes_yes_yes_yes_yes_yes_yes_yes_yes_yes_yes_yes_yes_yes_yes""",
+        r"""no_no_no_no_no_no_no_no_no_no_no_no_no_no_no_no_no_no_no_no""",
+        r"""ok_ok_ok_ok_ok_ok_ok_ok_ok_ok_ok_ok_ok_ok_ok_ok_ok_ok_ok_ok""",
+        r"""hi_hi_hi_hi_hi_hi_hi_hi_hi_hi_hi_hi_hi_hi_hi_hi_hi_hi_hi_hi""",
     ]
 
     model, tokenizer = load_model_and_tokenizer(model_path)
     print(model.dtype)
+
+    model32 = AutoModelForCausalLM.from_pretrained(model_path, local_files_only=True, device_map='cpu').eval()
+    print(model32.dtype)
 
     training_prompts = get_training_prompts()
 
@@ -371,6 +374,7 @@ def run_phi_attack_from_another_file():
     batch_size = 512
 
     allow_non_ascii = False  # you can set this to True to use unicode tokens
+
 
     linear_models = {}
 
@@ -383,8 +387,7 @@ def run_phi_attack_from_another_file():
     layers.sort()
 
     for i in layers:
-        linear_models[i] = pickle.load(
-            open(f'{PROJECT_ROOT}/trained_linear_probes_microsoft/{model_name}/{i}/model.pickle', 'rb'))
+        linear_models[i] = pickle.load(open(f'{PROJECT_ROOT}/trained_linear_probes_microsoft/{model_name}/{i}/model.pickle', 'rb'))
 
     custom_model = CustomModel(model, linear_models)
     device = custom_model.base_model.get_input_embeddings().weight.device
@@ -395,6 +398,7 @@ def run_phi_attack_from_another_file():
     result_path = f'{PROJECT_ROOT}/opt_results/{model_name}_optimisation_result.json'
 
     start_idx = 0
+
     if os.path.exists(result_path):
         optimisation_result = json.load(open(result_path, 'r'))
         start_idx = len(optimisation_result['Result list'])
@@ -403,13 +407,14 @@ def run_phi_attack_from_another_file():
             "Result list": []
         }
 
-    print(f"phi start idx: {start_idx}")
+    print(f"llama start idx: {start_idx}")
 
     for idx in range(start_idx, len(adv_string_init_list)):
+
         adv_string_init = adv_string_init_list[idx]
 
-        # Randomly select 50 from the first 100000 prompts
-        prompt_indices = random.sample(range(100000), 50)
+        # Randomly select 50 from the range [100000, 200000)
+        prompt_indices = random.sample(range(100000, 200000), 50)
 
         # Get the text from the train dataset
         texts = [training_prompts[prompt_indices[0]]]
@@ -427,7 +432,7 @@ def run_phi_attack_from_another_file():
 
         result_dict = run_attack(
             tokenizer=tokenizer,
-            model=model,
+            model32=model32,
             custom_model=custom_model,
             linear_models=linear_models,
             training_prompts=training_prompts,
@@ -459,38 +464,30 @@ def run_phi_attack_from_another_file():
 # if __name__ == "__main__":
 #
 #     adv_string_init_list = [
-#         r"""$ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $""",
-#         r"""* * * * * * * * * * * * * * * * * * * *""",
-#         r"""& @ ^ # | & @ ^ # | & @ ^ # | & @ ^ # |""",
-#         r"""| < { ] > [ } + % ? . ) / ~ ( , - = _ @""",
-#         r"""& & : : $ $ ; ; _ _ # # ! ! + + ? ? = =""",
-#         r"""# # # # # & & & & & @ @ @ @ @ ? ? ? ? ?""",
-#         r"""* ) # ~ / | > } ! @ [ = _ ( { : ^ ) ] -""",
-#         r"""yes yes yes yes yes yes yes yes yes yes yes yes yes yes yes yes yes yes yes yes""",
-#         r"""no no no no no no no no no no no no no no no no no no no no""",
-#         r"""ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok""",
-#         r"""hi hi hi hi hi hi hi hi hi hi hi hi hi hi hi hi hi hi hi hi""",
-#
-#         r"""% % % % % % % % % % % % % % % % % % % %""",
-#         r"""+ + + + + + + + + + + + + + + + + + + +""",
-#         r"""- - - - - - - - - - - - - - - - - - - -""",
-#         r"""= = = = = = = = = = = = = = = = = = = =""",
-#         r"""@ @ @ @ @ @ @ @ @ @ @ @ @ @ @ @ @ @ @ @""",
-#         r"""O @ ! x @ & @ R $ B @ P @ Q @ T } W @ M""",
-#         r"""@ ( t _ z | @ ; y [ v @ $ l j * i @ : r""",
-#         r"""# hi @ no @ ! ! ~ < n { s ' ; @ u > c .""",
+#         r"""$_$_$_$_$_$_$_$_$_$_$_$_$_$_$_$_$_$_$_$""",
+#         r"""*_*_*_*_*_*_*_*_*_*_*_*_*_*_*_*_*_*_*_*""",
+#         r"""&_@_^_#_|_&_@_^_#_|_&_@_^_#_|_&_@_^_#_|""",
+#         r"""|_<_{_]_>_[_}_+_%_?_._)_/_~_(_,_-_=_%_@""",
+#         r"""&_&_:_:_$_$_;_;_%_%_#_#_!_!_+_+_?_?_=_=""",
+#         r"""#_#_#_#_#_&_&_&_&_&_@_@_@_@_@_?_?_?_?_?""",
+#         r"""*_)_#_~_/_|_>_}_!_@_[_=_%_(_{_:_^_)_]_-""",
+#         r"""yes_yes_yes_yes_yes_yes_yes_yes_yes_yes_yes_yes_yes_yes_yes_yes_yes_yes_yes_yes""",
+#         r"""no_no_no_no_no_no_no_no_no_no_no_no_no_no_no_no_no_no_no_no""",
+#         r"""ok_ok_ok_ok_ok_ok_ok_ok_ok_ok_ok_ok_ok_ok_ok_ok_ok_ok_ok_ok""",
+#         r"""hi_hi_hi_hi_hi_hi_hi_hi_hi_hi_hi_hi_hi_hi_hi_hi_hi_hi_hi_hi"""
 #     ]
 #
 #     model, tokenizer = load_model_and_tokenizer(model_path)
 #     print(model.dtype)
+#
+#     model32 = AutoModelForCausalLM.from_pretrained(model_path, local_files_only=True, device_map='cpu').eval()
+#     print(model32.dtype)
 #
 #     training_prompts = get_training_prompts()
 #
 #     num_steps = 500
 #     topk = 256
 #     batch_size = 512
-#
-#
 #     allow_non_ascii = False  # you can set this to True to use unicode tokens
 #
 #
@@ -525,12 +522,14 @@ def run_phi_attack_from_another_file():
 #             "Result list": []
 #         }
 #
+#     print(start_idx)
+#
 #     for idx in range(start_idx, len(adv_string_init_list)):
 #
 #         adv_string_init = adv_string_init_list[idx]
 #
-#         # Randomly select 50 from the first 100000 prompts
-#         prompt_indices = random.sample(range(100000), 50)
+#         # Randomly select 50 from the range [100000, 200000)
+#         prompt_indices = random.sample(range(100000, 200000), 50)
 #
 #         # Get the text from the train dataset
 #         texts = [training_prompts[prompt_indices[0]]]
@@ -548,7 +547,7 @@ def run_phi_attack_from_another_file():
 #
 #         result_dict = run_attack(
 #             tokenizer=tokenizer,
-#             model=model,
+#             model32=model32,
 #             custom_model=custom_model,
 #             linear_models=linear_models,
 #             training_prompts=training_prompts,
