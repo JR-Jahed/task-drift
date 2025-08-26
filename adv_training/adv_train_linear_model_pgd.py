@@ -13,13 +13,14 @@ from logistic_regression import LogisticRegression
 import random
 
 MODEL = 'phi3'
-OUTPUT_DIR = f'{PROJECT_ROOT}/adv_trained_linear_probes/{MODEL}'
+OUTPUT_DIR = f'{PROJECT_ROOT}/adv_trained_linear_probes_pgd/{MODEL}'
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 
 def prepare_val_data(
         val_clean_files,
         val_poisoned_files,
+        device,
         root_dir_val,
         num_layers,
         model,
@@ -41,14 +42,16 @@ def prepare_val_data(
     clean_diff, poisoned_diff, adv_poisoned_diff = [], [], []
 
     for primary, clean in tqdm(val_clean_dataset):
-        primary = primary.flatten().float()
-        clean = clean.flatten().float()
+        primary = primary.flatten().float().to(device)
+        clean = clean.flatten().float().to(device)
 
         clean_diff.append((clean - primary).unsqueeze(0))
 
+    print(f"Generating PGD-perturbed poisoned activations")
+
     for primary, poisoned in tqdm(val_poisoned_dataset):
-        primary = primary.flatten().float()
-        poisoned = poisoned.flatten().float()
+        primary = primary.flatten().float().to(device)
+        poisoned = poisoned.flatten().float().to(device)
 
         poisoned_diff.append((poisoned - primary).unsqueeze(0))
 
@@ -61,7 +64,7 @@ def prepare_val_data(
             steps=steps,
             target_label=0
         )
-        adv_poisoned_diff.append(((adv_poisoned - primary).unsqueeze(0)).cpu())
+        adv_poisoned_diff.append(((adv_poisoned - primary).unsqueeze(0)).to(device))
 
     X_clean_diff = torch.cat(clean_diff, dim=0)
     X_poisoned_diff = torch.cat(poisoned_diff, dim=0)
@@ -97,10 +100,22 @@ def train_model_pt(
     weight_decay=0.0,           # weight_decay ~= L2 regularization
     validate_every=1
 ):
-    device = 'cpu'
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
     model = LogisticRegression(input_dim).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
     criterion = nn.BCEWithLogitsLoss()
+
+    val_loader = prepare_val_data(
+        val_clean_files=val_clean_files,
+        val_poisoned_files=val_poisoned_files,
+        device=device,
+        root_dir_val=root_dir_val,
+        num_layers=num_layers,
+        model=model,
+        epsilon=epsilon,
+        alpha=alpha,
+        steps=steps,
+    )
 
     model.train()
 
@@ -121,20 +136,6 @@ def train_model_pt(
             train_dataset,
             batch_size=512,
             shuffle=True
-        )
-
-        # Can't load the entire validation data because of limited resource
-        # Therefore, load 2 clean and 2 poisoned files
-
-        val_loader = prepare_val_data(
-            val_clean_files=random.sample(val_clean_files, 2),
-            val_poisoned_files=random.sample(val_poisoned_files, 2),
-            root_dir_val=root_dir_val,
-            num_layers=num_layers,
-            model=model,
-            epsilon=epsilon,
-            alpha=alpha,
-            steps=steps,
         )
 
         best_val_acc = 0.0
@@ -235,6 +236,8 @@ if __name__ == "__main__":
 
     for num_layer in LAYERS_PER_MODEL[MODEL]:
 
+        print(f"Training on layer {num_layer}\n")
+
         os.makedirs(os.path.join(OUTPUT_DIR, str(num_layer)), exist_ok=True)
         layer_output_dir = os.path.join(OUTPUT_DIR, str(num_layer))
 
@@ -254,7 +257,7 @@ if __name__ == "__main__":
             root_dir_train=root_dir_train,
             root_dir_val=root_dir_val,
             input_dim=input_dim,
-            batch_files=8,
+            batch_files=100,
             epochs_per_chunk=10,
             epsilon=0.5,
             alpha=0.01,

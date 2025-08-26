@@ -16,21 +16,24 @@ os.environ["HF_HOME"] = cache_dir
 activation_parent_dir = "/home/40456997@eeecs.qub.ac.uk/Adversarial Activation"
 
 # Directory where the dataset text files are stored
-text_dataset_parent_dir = (
-    "/home/40456997@eeecs.qub.ac.uk/Text Dataset"
-)
+text_dataset_parent_dir = "/home/40456997@eeecs.qub.ac.uk/Text Dataset"
 
 # Paths to dataset files
 data = {
     "train": os.path.join(text_dataset_parent_dir, "train_subset.json"),
     # "val_clean": os.path.join(text_dataset_parent_dir, "dataset_out_clean.json"),
-    # "val_poisoned": os.path.join(
-    #     text_dataset_parent_dir, "dataset_out_poisoned_v1.json"
-    # ),
+    "val_poisoned": os.path.join(
+        text_dataset_parent_dir, "dataset_out_poisoned_v1.json"
+    ),
     # "test_clean": os.path.join(text_dataset_parent_dir, "dataset_out_clean_v2.json"),
     # "test_poisoned": os.path.join(
     #     text_dataset_parent_dir, "dataset_out_poisoned_v2.json"
     # ),
+}
+
+suffix_list = {
+    "train": os.path.join(PROJECT_ROOT, "generate_activations/data/train_suffix_list.json"),
+    "val_poisoned": os.path.join(PROJECT_ROOT, "generate_activations/data/val_suffix_list.json"),
 }
 
 # Initialize models with specific configurations
@@ -39,6 +42,7 @@ llama_3_8B = Model(
     name="meta-llama/Meta-Llama-3-8B-Instruct",
     output_dir=os.path.join(activation_parent_dir, "llama3_8b"),
     data=data,
+    suffix_list=suffix_list,
     subset="train",
     torch_dtype=torch.float32,
 )
@@ -47,6 +51,7 @@ phi3 = Model(
     name="microsoft/Phi-3-mini-4k-instruct",
     output_dir=os.path.join(activation_parent_dir, "phi3"),
     data=data,
+    suffix_list=suffix_list,
     subset="train",
     torch_dtype=torch.bfloat16,
 )

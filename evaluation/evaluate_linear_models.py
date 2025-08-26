@@ -19,18 +19,20 @@ def test_adv_trained_model(test_files_path, num_layer):
     test_files = load_file_paths(test_files_path)
 
     linear_model = LogisticRegression(input_dim=3072)
-    linear_model.load_state_dict(torch.load(os.path.join(PROJECT_ROOT, 'adv_trained_linear_probes', model, str(num_layer), 'model.pt')))
+    linear_model.load_state_dict(torch.load(os.path.join(PROJECT_ROOT, 'adv_trained_linear_probes_suffix', model, str(num_layer), 'model.pt')))
 
     linear_model.eval()
 
     total_prompts = 31134
     poisoned_predicted = 0
 
-    for i in range(0, len(test_files), 10):
+    batch_files = 1
+
+    for i in range(0, len(test_files), batch_files):
 
         # Test the linear model on a small subset of activations
         dataset = ActivationsDatasetDynamicPrimaryText(
-            test_files[i: i + 10],
+            test_files[i: i + batch_files],
             root_dir=ROOT_DIR_TEST[model],
             num_layers=(num_layer, num_layer)
         )
@@ -207,8 +209,8 @@ if __name__ == '__main__':
         print("Microsoft trained linear models:")
         test_microsoft_trained_model(clean_filepath, num_layer)
 
-        # print("Adversarially trained linear models:")
-        # test_adv_trained_model(clean_filepath, num_layer)
+        print("Adversarially trained linear models:")
+        test_adv_trained_model(clean_filepath, num_layer)
 
         print("-----------------------------------------")
 
@@ -216,7 +218,7 @@ if __name__ == '__main__':
         print("Microsoft trained linear models:")
         test_microsoft_trained_model(poisoned_filepath, num_layer)
 
-        # print("Adversarially trained linear models:")
-        # test_adv_trained_model(poisoned_filepath, num_layer)
+        print("Adversarially trained linear models:")
+        test_adv_trained_model(poisoned_filepath, num_layer)
 
         print("----------------------------------------------------------------------------------------\n\n")

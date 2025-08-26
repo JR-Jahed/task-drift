@@ -5,6 +5,9 @@ from tqdm import tqdm
 from torch.utils.data import Dataset
 import random
 from typing import List, Union, Tuple
+from constants import LAYER_MAP
+
+
 
 HIDDEN_STATES_DIR = '/share/data_instruct_sep/get_activations/mistral'
 
@@ -80,10 +83,10 @@ class ActivationsDatasetDynamic(Dataset):
             # - Include all activation values from the selected layers (:).
 
             if isinstance(num_layers, int):
-                activation = activation_file[0:3, :, -num_layers:, :]
+                activation = activation_file[0:3, :, -LAYER_MAP[num_layers]:, :]
 
             elif isinstance(num_layers, tuple):
-                activation = activation_file[0:3, :, num_layers[0]: num_layers[1] + 1, :]
+                activation = activation_file[0:3, :, LAYER_MAP[num_layers[0]]: LAYER_MAP[num_layers[1]] + 1, :]
 
             # Append the sliced activation tensor to the list.
             activations.append(activation)
@@ -153,10 +156,10 @@ class ActivationsDatasetDynamicPrimaryText(Dataset):
             curr_file = torch.load(os.path.join(self.root_dir, file_))
 
             if isinstance(self.num_layers, int):
-                activation = curr_file[:, :, -self.num_layers:, :]
+                activation = curr_file[:, :, -LAYER_MAP[self.num_layers]:, :]
 
             elif isinstance(self.num_layers, tuple):
-                activation = curr_file[:, :, self.num_layers[0]: self.num_layers[1] + 1, :]
+                activation = curr_file[:, :, LAYER_MAP[self.num_layers[0]]: LAYER_MAP[self.num_layers[1]] + 1, :]
 
             activations.append(activation)
 
@@ -173,3 +176,125 @@ class ActivationsDatasetDynamicPrimaryText(Dataset):
         activations_primary_with_text = self.activations[1, idx, :]
 
         return activations_primary, activations_primary_with_text
+
+
+"""------------------------------------------------------------------------------------------------------------------------------"""
+
+
+class AdversarialActivationsDatasetDynamic(Dataset):
+
+    def __init__(self, dataset_files: List[str], adv_dataset_files: List[str], root_dir: str, root_dir_adv: str,
+                 num_layers: Union[int, Tuple[int, int]]):
+
+        self.root_dir = root_dir
+        self.dataset_files = dataset_files
+        self.adv_dataset_files = adv_dataset_files
+        self.root_dir_adv = root_dir_adv
+        self.activations = self.load_activations(num_layers)
+
+    def load_activations(self, num_layers: Union[int, Tuple[int, int]]):
+        activations = []
+
+        for file_, adv_file in tqdm(zip(self.dataset_files, self.adv_dataset_files)):
+            file_name = os.path.join(self.root_dir, file_)
+            adv_file_name = os.path.join(self.root_dir_adv, adv_file)
+
+            if not os.path.exists(file_name) or not os.path.exists(adv_file_name):
+                continue
+
+            # Load the activation tensor from the current file.
+
+            activation_tensor = torch.load(file_name)
+            adv_activation_tensor = torch.load(adv_file_name)
+
+            activation_file = torch.cat([activation_tensor, adv_activation_tensor], dim=0)
+
+            if isinstance(num_layers, int):
+                activation = activation_file[0:4, :, -LAYER_MAP[num_layers]:, :]
+
+            elif isinstance(num_layers, tuple):
+                activation = activation_file[0:4, :, LAYER_MAP[num_layers[0]]: LAYER_MAP[num_layers[1]] + 1, :]
+
+            # Append the sliced activation tensor to the list.
+            activations.append(activation)
+
+        if len(activations) == 0:
+            return torch.empty(4, 0, 0, 0)
+
+        # Concatenate all activation tensors in the list along the first dimension.
+        return torch.cat(activations, dim=1)
+
+    def __len__(self):
+        """
+        Returns the number of samples in the dataset.
+
+        Returns:
+            The size of the second dimension of the activations tensor, representing the number of samples.
+        """
+        return self.activations.size(1)
+
+    def __getitem__(self, idx):
+        if torch.is_tensor(idx):
+            idx = idx.tolist()
+
+        primary = self.activations[0, idx, :]
+        clean = self.activations[1, idx, :]
+        poisoned = self.activations[2, idx, :]
+        adv_poisoned = self.activations[3, idx, :]
+
+        return primary, clean, poisoned, adv_poisoned
+
+
+class AdversarialActivationsDatasetDynamicPrimaryText(Dataset):
+    """
+    This class is similar to previous ones. However, it assumes that the data is stored as pairs of (primary, text) instead of triplets of (primary, clean, poisoned)
+
+    This is mainly for testing on validation and test data.
+    """
+
+    def __init__(self, dataset_files: List[str], adv_dataset_files: List[str], num_layers: Union[int, Tuple[int, int]],
+                 root_dir: str = HIDDEN_STATES_DIR, root_dir_adv: str = HIDDEN_STATES_DIR):
+        """
+        Arguments:
+            dataset_files (list): list of files of saved injection pt file
+            root_dir (string): Directory with all the images.
+        """
+        self.root_dir = root_dir
+        self.dataset_files = dataset_files
+        self.num_layers = num_layers
+        self.adv_dataset_files = adv_dataset_files
+        self.root_dir_adv = root_dir_adv
+
+        self.activations = self.load_activations()
+        return
+
+    def load_activations(self):
+        activations = []
+        for file_, adv_file in zip(self.dataset_files, self.adv_dataset_files):
+            curr_file = torch.load(os.path.join(self.root_dir, file_))
+            curr_file_adv = torch.load(os.path.join(self.root_dir_adv, adv_file))
+
+            activation_file = torch.cat([curr_file, curr_file_adv], dim=0)
+
+            if isinstance(self.num_layers, int):
+                activation = activation_file[:, :, -LAYER_MAP[self.num_layers]:, :]
+
+            elif isinstance(self.num_layers, tuple):
+                activation = activation_file[:, :, LAYER_MAP[self.num_layers[0]]: LAYER_MAP[self.num_layers[1]] + 1, :]
+
+            activations.append(activation)
+
+        return torch.cat(activations, dim=1)
+
+    def __len__(self):
+        return self.activations.size(1)
+
+    def __getitem__(self, idx):
+        if torch.is_tensor(idx):
+            idx = idx.tolist()
+
+        activations_primary = self.activations[0, idx, :]
+        activations_primary_with_text = self.activations[1, idx, :]
+        adv_activations_primary_with_text = self.activations[2, idx, :]
+
+        return activations_primary, activations_primary_with_text, adv_activations_primary_with_text

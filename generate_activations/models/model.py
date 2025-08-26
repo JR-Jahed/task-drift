@@ -29,6 +29,7 @@ class Model:
         name: str,
         output_dir: str,
         data: Dict[str, str],
+        suffix_list: Dict[str, str],
         subset: str,
         start_idx: int = 0,
         start_layer: int = 0,
@@ -41,6 +42,7 @@ class Model:
         self.output_dir = output_dir
         self.token = token
         self.data = data
+        self.suffix_list = suffix_list
         self.subset = subset
         self.start_idx = start_idx
         self.start_layer = start_layer

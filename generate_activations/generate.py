@@ -7,7 +7,6 @@ from generate_activations.config.models import cache_dir, models
 
 from generate_activations.activations import process_texts
 from generate_activations.utils.model import load_model_and_tokenizer
-from constants import PROJECT_ROOT
 import gc
 
 
@@ -22,11 +21,9 @@ model_name: str = "phi3"
 with_priming: bool = True
 
 
-def generate_activations_from_another_file():
+def main():
     model = models[model_name]
     model_path = os.path.join(cache_dir, model_name)
-
-    suffix_list = json.load(open(f'{PROJECT_ROOT}/generate_activations/data/train_suffix_list.json', 'r'))
 
     try:
         # Load the model and tokenizer
@@ -52,6 +49,8 @@ def generate_activations_from_another_file():
         try:
             subset = json.load(open(data, "r"))
 
+            suffix_list = json.load(open(model.suffix_list[data_type], "r"))
+
             # Determine directory and subset types based on data type
             if data_type == "train":
                 directory_name = "training"
@@ -63,16 +62,17 @@ def generate_activations_from_another_file():
                     suffix_list=suffix_list['Suffix list'],
                     with_priming=with_priming,
                 )
-            # else:
-            #     directory_name = "validation" if "val" in data_type else "test"
-            #     subset_type = "clean" if "clean" in data_type else "poisoned"
-            #     process_texts_in_batches_pairs(
-            #         dataset_subset=subset[model.start_idx :],
-            #         model=model,
-            #         data_type=subset_type,
-            #         sub_dir_name=directory_name,
-            #         with_priming=with_priming,
-            #     )
+            else:
+                directory_name = "validation" if "val" in data_type else "test"
+                subset_type = "clean" if "clean" in data_type else "poisoned"
+                process_texts(
+                    dataset_subset=subset[model.start_idx :],
+                    model=model,
+                    data_type=subset_type,
+                    sub_dir_name=directory_name,
+                    suffix_list=suffix_list['Suffix list'],
+                    with_priming=with_priming,
+                )
 
         except json.JSONDecodeError as json_err:
             logging.error(f"Error decoding JSON for {data_type}: {json_err}")
@@ -86,6 +86,6 @@ def generate_activations_from_another_file():
     torch.cuda.empty_cache()
 
 
-# if __name__ == "__main__":
-#
-#     main()
+if __name__ == "__main__":
+
+    main()

@@ -9,8 +9,6 @@ from tqdm import tqdm
 from generate_activations.config.models import Model
 from utils.data import format_prompts
 
-import time
-
 
 current_dir = os.getcwd()
 parent_dir = os.path.dirname(current_dir)
