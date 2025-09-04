@@ -31,10 +31,7 @@ data = {
     # ),
 }
 
-suffix_list = {
-    "train": os.path.join(PROJECT_ROOT, "generate_activations/data/train_suffix_list.json"),
-    "val_poisoned": os.path.join(PROJECT_ROOT, "generate_activations/data/val_suffix_list.json"),
-}
+suffix_list_dir = os.path.join(PROJECT_ROOT, "generate_activations/data")
 
 # Initialize models with specific configurations
 
@@ -42,7 +39,10 @@ llama_3_8B = Model(
     name="meta-llama/Meta-Llama-3-8B-Instruct",
     output_dir=os.path.join(activation_parent_dir, "llama3_8b"),
     data=data,
-    suffix_list=suffix_list,
+    suffix_list={
+        "train": os.path.join(suffix_list_dir, "llama_3_8b_train_suffix_list.json"),
+        "val_poisoned": os.path.join(suffix_list_dir, "llama_3_8b_val_suffix_list.json"),
+    },
     subset="train",
     torch_dtype=torch.float32,
 )
@@ -51,7 +51,10 @@ phi3 = Model(
     name="microsoft/Phi-3-mini-4k-instruct",
     output_dir=os.path.join(activation_parent_dir, "phi3"),
     data=data,
-    suffix_list=suffix_list,
+    suffix_list={
+        "train": os.path.join(suffix_list_dir, "phi3_train_suffix_list.json"),
+        "val_poisoned": os.path.join(suffix_list_dir, "phi3_val_suffix_list.json"),
+    },
     subset="train",
     torch_dtype=torch.bfloat16,
 )

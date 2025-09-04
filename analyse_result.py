@@ -43,29 +43,29 @@ def analyse_adv_trained_models(filepath):
 
     """
 
-    data = json.load(open(filepath, 'r'))
+    results = json.load(open(filepath, 'r'))
 
-    print(f"Total suffixes: {len(data['Result list'])}")
-    print(f"Tested on: {len(data['Result list'][0]['Prompt indices'])} prompts\n")
+    print(f"Total suffixes: {len(results['Result list'])}")
+    print(f"Tested on: {len(results['Result list'][0]['Prompt indices'])} prompts\n")
 
-    num_test_prompts = len(data['Result list'][0]['Prompt indices'])
+    num_test_prompts = len(results['Result list'][0]['Prompt indices'])
 
-    for i in range(len(data['Result list'])):
-        print(data['Result list'][i]['Suffix'])
-        print(data['Result list'][i]['Total number of prompts correctly classified by a specific number of classifiers']['Without suffix'])
-        print(data['Result list'][i]['Total number of prompts correctly classified by a specific number of classifiers']['With suffix'])
+    for i in range(len(results['Result list'])):
+        print(results['Result list'][i]['Suffix'])
+        print(results['Result list'][i]['Total number of prompts correctly classified by a specific number of classifiers']['Without suffix'])
+        print(results['Result list'][i]['Total number of prompts correctly classified by a specific number of classifiers']['With suffix'])
 
-        print(data['Result list'][i]['Layerwise correct classification']['Without suffix'])
-        print(data['Result list'][i]['Layerwise correct classification']['With suffix'])
+        print(results['Result list'][i]['Layerwise correct classification']['Without suffix'])
+        print(results['Result list'][i]['Layerwise correct classification']['With suffix'])
 
         print("\nWithout suffix  ", end='')
 
-        for k, v in data['Result list'][i]['Layerwise correct classification']['Without suffix'].items():
+        for k, v in results['Result list'][i]['Layerwise correct classification']['Without suffix'].items():
             print(f'----  {k}: {(v / num_test_prompts) * 100:6.2f}%  ', end='')
 
         print("\nWith suffix     ", end='')
 
-        for k, v in data['Result list'][i]['Layerwise correct classification']['With suffix'].items():
+        for k, v in results['Result list'][i]['Layerwise correct classification']['With suffix'].items():
             print(f'----  {k}: {(v / num_test_prompts) * 100:6.2f}%  ', end='')
 
         print('\n\n')
@@ -111,14 +111,14 @@ def analyse_optimisation(filepath):
         losses_str = "[" + ", ".join([f'{loss:.8f}' for loss in losses]) + "]"
         return losses_str
 
-    data = json.load(open(filepath, 'r'))
-    print(f"Total suffixes: {len(data['Result list'])}")
+    results = json.load(open(filepath, 'r'))
+    print(f"Total suffixes: {len(results['Result list'])}")
 
-    suffix_index = 6
+    suffix_index = 13
 
     print(f"Current suffix index: {suffix_index}\n")
 
-    for i, iteration_log in enumerate(data['Result list'][suffix_index]['Result']['Iteration log']):
+    for i, iteration_log in enumerate(results['Result list'][suffix_index]['Result']['Iteration log']):
 
         print(f"i: {i}")
 
@@ -129,39 +129,55 @@ def analyse_optimisation(filepath):
         print("-------------------------------------------------------\n")
 
 
+def analyse_suffix_attack_on_linear_models(filepath):
+
+    results = json.load(open(filepath, 'r'))
+
+    total_prompts = len(results['Attack result list'])
+    print(f"Total prompts: {total_prompts}")
+
+    print(f"Total number of prompts misclassified by a specific number of classifiers without suffix: {results['Total number of prompts misclassified by a specific number of classifiers']['Without suffix']}")
+    print(f"Total number of prompts misclassified by a specific number of classifiers with suffix: {results['Total number of prompts misclassified by a specific number of classifiers']['With suffix']}")
+    print()
+    print(f"Layerwise misclassification: {results['Layerwise misclassification']['Without suffix']}")
+    print(f"Layerwise misclassification: {results['Layerwise misclassification']['With suffix']}")
+    print()
+
+    same_prediction_across_last_four_classifiers = 0
+
+    for i in range(len(results['Attack result list'])):
+        labels = results['Attack result list'][i]['With suffix']['labels']
+
+        if labels[1] == 0 and labels[2] == 0 and labels[3] == 0 and labels[4] == 0:
+            same_prediction_across_last_four_classifiers += 1
+
+    print(f"Same prediction across last four classifiers: {same_prediction_across_last_four_classifiers}"
+          f"     ASR: {round(same_prediction_across_last_four_classifiers / total_prompts * 100, 2)}%")
+
+
+    asr_all_five = results["Total number of prompts misclassified by a specific number of classifiers"]["With suffix"]['5']
+    asr_four_or_more = results["Total number of prompts misclassified by a specific number of classifiers"]["With suffix"]['4'] + asr_all_five
+    asr_three_or_more = results["Total number of prompts misclassified by a specific number of classifiers"]["With suffix"]['3'] + asr_four_or_more
+
+    print(f"\nASR all five: {round(asr_all_five / total_prompts * 100, 2)}%")
+    print(f"ASR four or more: {round(asr_four_or_more / total_prompts * 100, 2)}%")
+    print(f"ASR three or more: {round(asr_three_or_more / total_prompts * 100, 2)}%")
+
 
 
 if __name__ == "__main__":
 
-    # filepath = f'{PROJECT_ROOT}/test_results/phi3_result_adv_trained_models.json'
+    # filepath = f'{PROJECT_ROOT}/test_results/phi3_result_adv_trained_models_pgd.json'
     # # filepath = '/home/40456997@eeecs.qub.ac.uk/Test Results/Adv Trained Models/Epoch 3/phi3_result_adv_trained_models_on_initial_test_suffixes.json'
     #
     # analyse_adv_trained_models(filepath)
 
-    filepath = f'{PROJECT_ROOT}/opt_results/phi3_optimisation_result.json'
+    # filepath = f'{PROJECT_ROOT}/opt_results/phi3_optimisation_result.json'
+    #
+    # analyse_optimisation(filepath)
 
-    analyse_optimisation(filepath)
+    filepath = f'{PROJECT_ROOT}/test_results/phi3_result.json'
+
+    analyse_suffix_attack_on_linear_models(filepath)
 
 
-
-
-# total_prompts = len(data['Attack result list'])
-# same_prediction_across_last_four_classifiers = 0
-#
-# for i in range(len(data['Attack result list'])):
-#     labels = data['Attack result list'][i]['With suffix']['labels']
-#
-#     if labels[1] == 0 and labels[2] == 0 and labels[3] == 0 and labels[4] == 0:
-#         same_prediction_across_last_four_classifiers += 1
-#
-# print(f"Same prediction across last four classifiers: {same_prediction_across_last_four_classifiers}"
-#       f"     ASR: {round(same_prediction_across_last_four_classifiers / total_prompts * 100, 2)}%")
-#
-#
-# asr_all_five = data["Total number of prompts misclassified by a specific number of classifiers"]["With suffix"]['5']
-# asr_four_or_more = data["Total number of prompts misclassified by a specific number of classifiers"]["With suffix"]['4'] + asr_all_five
-# asr_three_or_more = data["Total number of prompts misclassified by a specific number of classifiers"]["With suffix"]['3'] + asr_four_or_more
-#
-# print(f"\nASR all five: {round(asr_all_five / total_prompts * 100, 2)}%")
-# print(f"ASR four or more: {round(asr_four_or_more / total_prompts * 100, 2)}%")
-# print(f"ASR three or more: {round(asr_three_or_more / total_prompts * 100, 2)}%")

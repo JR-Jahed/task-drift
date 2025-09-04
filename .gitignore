@@ -5,3 +5,5 @@ __pycache__
 /trained_linear_probes_microsoft
 /adv_trained_linear_probes_pgd
 /adv_trained_linear_probes_suffix
+/opt_results
+/test_results

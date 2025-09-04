@@ -1,3 +1,4 @@
+import time
 import pickle
 from dataset import ActivationsDatasetDynamicPrimaryText
 from utils.load_file_paths import load_file_paths
@@ -7,19 +8,21 @@ from collections import defaultdict
 from constants import PROJECT_ROOT, LAYERS_PER_MODEL, ROOT_DIR_TEST
 import torch
 from adv_training.logistic_regression import LogisticRegression
+import warnings
 
 
+warnings.filterwarnings('ignore')
 np.set_printoptions(suppress=True, linewidth=10000)
 
 model = 'phi3'
 
 
-def test_adv_trained_model(test_files_path, num_layer):
+def test_adv_trained_model(test_files_path, adv_training_type, num_layer):
 
     test_files = load_file_paths(test_files_path)
 
     linear_model = LogisticRegression(input_dim=3072)
-    linear_model.load_state_dict(torch.load(os.path.join(PROJECT_ROOT, 'adv_trained_linear_probes_suffix', model, str(num_layer), 'model.pt')))
+    linear_model.load_state_dict(torch.load(os.path.join(PROJECT_ROOT, f'adv_trained_linear_probes_{adv_training_type}', model, str(num_layer), 'model.pt')))
 
     linear_model.eval()
 
@@ -201,24 +204,28 @@ if __name__ == '__main__':
     clean_filepath = f'{PROJECT_ROOT}/data_files/test_clean_files_{model}.txt'
     poisoned_filepath = f'{PROJECT_ROOT}/data_files/test_poisoned_files_{model}.txt'
 
+    start_time = time.time()
+
     for num_layer in LAYERS_PER_MODEL[model]:
 
         print(f"Evaluating Layer {num_layer}\n")
 
-        print("On clean dataset")
-        print("Microsoft trained linear models:")
+        print("On clean dataset\n")
+        print("Microsoft trained linear models:   -----   ", end='')
         test_microsoft_trained_model(clean_filepath, num_layer)
 
-        print("Adversarially trained linear models:")
-        test_adv_trained_model(clean_filepath, num_layer)
+        print("Adversarially trained linear models:   -----   ", end='')
+        test_adv_trained_model(clean_filepath, 'suffix', num_layer)
 
         print("-----------------------------------------")
 
-        print("On poisoned dataset")
-        print("Microsoft trained linear models:")
+        print("On poisoned dataset\n")
+        print("Microsoft trained linear models:   -----   ", end='')
         test_microsoft_trained_model(poisoned_filepath, num_layer)
 
-        print("Adversarially trained linear models:")
-        test_adv_trained_model(poisoned_filepath, num_layer)
+        print("Adversarially trained linear models:   -----   ", end='')
+        test_adv_trained_model(poisoned_filepath, 'suffix', num_layer)
 
         print("----------------------------------------------------------------------------------------\n\n")
+
+    print(f"Total time: {time.time() - start_time}")

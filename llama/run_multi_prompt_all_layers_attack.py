@@ -26,6 +26,27 @@ model_path = f'{PROJECT_ROOT}/loaded_models/{model_name}'
 
 
 
+def filter_prompt_indices(prompt_indices):
+    new_prompt_indices = []
+
+    for prompt_idx in prompt_indices:
+        filepaths = load_file_paths(f'{PROJECT_ROOT}/data_files/train_files_{model_name}.txt')
+
+        activation_file_index_in_list = 0
+
+        for idx, filepath in enumerate(filepaths):
+            if filepath.count(f'_{int(prompt_idx / 1000) * 1000}_{(int(prompt_idx / 1000) + 1) * 1000}_') == 1:
+                activation_file_index_in_list = idx
+                break
+
+        filepath = f'/home/40456997@eeecs.qub.ac.uk/Reduced Activation/{model_name}/training/{filepaths[activation_file_index_in_list]}'
+
+        if os.path.exists(filepath):
+            new_prompt_indices.append(prompt_idx)
+
+    return new_prompt_indices
+
+
 def format_probs(probs):
     formatted_probs = []
     for prob_pair in probs:
@@ -236,7 +257,19 @@ def run_attack(
 
         elapsed_time = time.time() - start_time
 
-        if i == num_steps or len(texts) >= 20 or elapsed_time >= 3 * 60 * 60 or (elapsed_time >= 2 * 60 * 60 and len(texts) >= 10):
+        # The aim is to find a suffix optimised on a diverse range of prompts
+        # It's about finding a balance between the amount of time spent on optimising one suffix
+        # and optimising the suffix for many prompts.
+
+        # Either the suffix has been optimised on 40 or more prompts
+        # Or, 6 hours have passed
+        # Or, 5 hours have passed and the suffix has been optimised on 70 or more prompts
+        # Or, more hours have passed than number of prompts if there are more than one prompt
+        # Or, two hours have passed or 200 iterations have been completed, but couldn't find a suffix for even one prompt
+
+        if (i == num_steps or len(texts) >= 100 or elapsed_time >= 6 * 60 * 60
+                or (elapsed_time >= 5 * 60 * 60 and len(texts) >= 70) or (len(texts) > 1 and elapsed_time >= len(texts) * 60 * 60)
+                or (len(texts) == 1 and (elapsed_time >= 2 * 60 * 60 or i >= 200))):
             break
 
         # Step 3. Sample a batch of new tokens based on the coordinate gradient.
@@ -320,9 +353,18 @@ def run_attack(
         if len(texts) < len(prompt_indices):
 
             if percentage_of_successful_prompts_all_layers(probs_all_prompts_all_layers, confidence_threshold=.6) >= .8:
-                # If the attack is successful on 80% or more prompts, add next prompt
-                add_next_prompt(training_prompts, prompt_indices, texts, primary_activations_all_prompts, device, layers)
-                last_added = i
+                # If the attack is successful on 80% or more prompts, add next prompt(s)
+
+                if len(texts) >= 10:
+                    # If the suffix has been optimised for 10 or more prompts, it has hopefully reached
+                    # a stable point where it will work for many prompts. Therefore, it might be sagacious
+                    # to add 1/3 new prompts to the list to save time
+                    for j in range(int(len(texts) / 3)):
+                        if len(texts) < len(prompt_indices):
+                            add_next_prompt(training_prompts, prompt_indices, texts, primary_activations_all_prompts, device, layers)
+                else:
+                    add_next_prompt(training_prompts, prompt_indices, texts, primary_activations_all_prompts, device, layers)
+                    last_added = i
 
             if len(texts) >= 5 and i - last_added == 10:
                 # If there are already 5 or more prompts and the latest one or any previous one is being recalcitrant
@@ -345,20 +387,30 @@ def run_attack(
     return result_dict
 
 
-def run_llama_attack_from_another_file():
+
+if __name__ == "__main__":
 
     adv_string_init_list = [
         r"""$_$_$_$_$_$_$_$_$_$_$_$_$_$_$_$_$_$_$_$""",
         r"""*_*_*_*_*_*_*_*_*_*_*_*_*_*_*_*_*_*_*_*""",
-        r"""&_@_^_#_|_&_@_^_#_|_&_@_^_#_|_&_@_^_#_|""",
-        r"""|_<_{_]_>_[_}_+_%_?_._)_/_~_(_,_-_=_%_@""",
-        r"""&_&_:_:_$_$_;_;_%_%_#_#_!_!_+_+_?_?_=_=""",
-        r"""#_#_#_#_#_&_&_&_&_&_@_@_@_@_@_?_?_?_?_?""",
-        r"""*_)_#_~_/_|_>_}_!_@_[_=_%_(_{_:_^_)_]_-""",
+        r"""&_@_^_#_|_&_@_^_#_|_&_@_^_#_|""",
+        r"""|_<_{_]_>_[_}_+_%_?_._)_/_~_(_,_""",
+        r"""&_&_:_:_$_$_;_;_%_%_#_#_!_!_+_""",
+        r"""#_#_#_#_#_&_&_&_&_&_@_@_@""",
+        r"""*_)_#_~_/_|_>_}_!_@_[_=_%_(_""",
         r"""yes_yes_yes_yes_yes_yes_yes_yes_yes_yes_yes_yes_yes_yes_yes_yes_yes_yes_yes_yes""",
         r"""no_no_no_no_no_no_no_no_no_no_no_no_no_no_no_no_no_no_no_no""",
         r"""ok_ok_ok_ok_ok_ok_ok_ok_ok_ok_ok_ok_ok_ok_ok_ok_ok_ok_ok_ok""",
         r"""hi_hi_hi_hi_hi_hi_hi_hi_hi_hi_hi_hi_hi_hi_hi_hi_hi_hi_hi_hi""",
+
+        r"""%_%_%_%_%_%_%_%_%_%_%_%_%_%_%_%_%_%_%_%""",
+        r"""+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_+_""",
+        r"""-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-""",
+        r"""=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_""",
+        r"""@_@_@_@_@_@_@_@_@_@_@""",
+        r"""O_@_!_x_@_&_@_R_$_B_@_P""",
+        r"""@_(_t___z_|_@_;_y_[_v_@_$_l_j_*""",
+        r"""#_hi_@_no_@_!_!_~_<_n_{_""",
     ]
 
     model, tokenizer = load_model_and_tokenizer(model_path)
@@ -368,11 +420,11 @@ def run_llama_attack_from_another_file():
     print(model32.dtype)
 
     training_prompts = get_training_prompts()
+    num_training_prompts = len(training_prompts)
 
     num_steps = 500
     topk = 256
     batch_size = 512
-
     allow_non_ascii = False  # you can set this to True to use unicode tokens
 
 
@@ -407,14 +459,20 @@ def run_llama_attack_from_another_file():
             "Result list": []
         }
 
-    print(f"llama start idx: {start_idx}")
+    print(start_idx)
 
     for idx in range(start_idx, len(adv_string_init_list)):
 
+        print(f"Suffix idx: {idx}")
+
         adv_string_init = adv_string_init_list[idx]
 
-        # Randomly select 50 from the range [100000, 200000)
-        prompt_indices = random.sample(range(100000, 200000), 50)
+        # Randomly select n from the training prompts
+        prompt_indices = random.sample(range(num_training_prompts), 300)
+
+        # All the training activation files are not available for LLaMA. 351 out of 419 are available.
+        # Therefore, it's necessary to filter indices
+        prompt_indices = filter_prompt_indices(prompt_indices)
 
         # Get the text from the train dataset
         texts = [training_prompts[prompt_indices[0]]]
@@ -455,13 +513,16 @@ def run_llama_attack_from_another_file():
             json.dump(optimisation_result, f, indent=4)
 
 
-    del model, tokenizer
-    gc.collect()
-    torch.cuda.empty_cache()
 
 
 
-# if __name__ == "__main__":
+
+
+
+
+
+
+# def run_llama_attack_from_another_file():
 #
 #     adv_string_init_list = [
 #         r"""$_$_$_$_$_$_$_$_$_$_$_$_$_$_$_$_$_$_$_$""",
@@ -474,7 +535,9 @@ def run_llama_attack_from_another_file():
 #         r"""yes_yes_yes_yes_yes_yes_yes_yes_yes_yes_yes_yes_yes_yes_yes_yes_yes_yes_yes_yes""",
 #         r"""no_no_no_no_no_no_no_no_no_no_no_no_no_no_no_no_no_no_no_no""",
 #         r"""ok_ok_ok_ok_ok_ok_ok_ok_ok_ok_ok_ok_ok_ok_ok_ok_ok_ok_ok_ok""",
-#         r"""hi_hi_hi_hi_hi_hi_hi_hi_hi_hi_hi_hi_hi_hi_hi_hi_hi_hi_hi_hi"""
+#         r"""hi_hi_hi_hi_hi_hi_hi_hi_hi_hi_hi_hi_hi_hi_hi_hi_hi_hi_hi_hi""",
+#
+#
 #     ]
 #
 #     model, tokenizer = load_model_and_tokenizer(model_path)
@@ -488,6 +551,7 @@ def run_llama_attack_from_another_file():
 #     num_steps = 500
 #     topk = 256
 #     batch_size = 512
+#
 #     allow_non_ascii = False  # you can set this to True to use unicode tokens
 #
 #
@@ -522,7 +586,7 @@ def run_llama_attack_from_another_file():
 #             "Result list": []
 #         }
 #
-#     print(start_idx)
+#     print(f"llama start idx: {start_idx}")
 #
 #     for idx in range(start_idx, len(adv_string_init_list)):
 #
@@ -568,3 +632,8 @@ def run_llama_attack_from_another_file():
 #
 #         with open(result_path, 'w') as f:
 #             json.dump(optimisation_result, f, indent=4)
+#
+#
+#     del model, tokenizer
+#     gc.collect()
+#     torch.cuda.empty_cache()

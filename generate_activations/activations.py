@@ -67,10 +67,13 @@ def get_last_token_activations_single(
                 torch.cuda.empty_cache()
             raise e
 
+        # First layer is embedding
+        hidden_states = outputs['hidden_states'][1:]
+
         last_tokens = []
         for i in [0, 7, 15, 23, 31]:
             # print(f'Extracting last token from layer {i}/{end_layer - 1}')
-            last_tokens.append(outputs["hidden_states"][i][:, token].cpu())
+            last_tokens.append(hidden_states[i][:, token].cpu())
         last_token_activations = torch.stack(last_tokens)
 
     return last_token_activations.squeeze(1)
@@ -110,8 +113,8 @@ def process_texts(
 
         dataset_subset_batch = dataset_subset[i : i + batch_size]
 
-        for batch_item in dataset_subset_batch:
-            batch_item['final_text_paragraph'] = batch_item['final_text_paragraph'] + " " + suffix_list[prompt_suffix_mapping[i]]
+        for j, batch_item in enumerate(dataset_subset_batch):
+            batch_item['final_text_paragraph'] = batch_item['final_text_paragraph'] + " " + suffix_list[prompt_suffix_mapping[i + j]]
 
         batch_primary, batch_primary_clean, batch_primary_poisoned = format_prompts(
             dataset_subset_batch, with_priming

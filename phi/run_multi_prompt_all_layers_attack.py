@@ -232,7 +232,19 @@ def run_attack(
 
         elapsed_time = time.time() - start_time
 
-        if i == num_steps or len(texts) >= 20 or elapsed_time >= 3 * 60 * 60 or (elapsed_time >= 2 * 60 * 60 and len(texts) >= 10):
+        # The aim is to find a suffix optimised on a diverse range of prompts
+        # It's about finding a balance between the amount of time spent on optimising one suffix
+        # and optimising the suffix on many prompts.
+
+        # Either the suffix has been optimised on 100 or more prompts
+        # Or, 6 hours have passed
+        # Or, 5 hours have passed and the suffix has been optimised on 70 or more prompts
+        # Or, more hours have passed than number of prompts if there are more than one prompt
+        # Or, two hours have passed or 200 iterations have been completed, but couldn't find a suffix for even one prompt
+
+        if (i == num_steps or len(texts) >= 100 or elapsed_time >= 6 * 60 * 60
+                or (elapsed_time >= 5 * 60 * 60 and len(texts) >= 70) or (len(texts) > 1 and elapsed_time >= len(texts) * 60 * 60)
+                or (len(texts) == 1 and (elapsed_time >= 2 * 60 * 60 or i >= 200))):
             break
 
         # Step 3. Sample a batch of new tokens based on the coordinate gradient.
@@ -312,9 +324,18 @@ def run_attack(
         if len(texts) < len(prompt_indices):
 
             if percentage_of_successful_prompts_all_layers(probs_all_prompts_all_layers, confidence_threshold=.7) >= .8:
-                # If the attack is successful on 80% or more prompts, add next prompt
-                add_next_prompt(training_prompts, prompt_indices, texts, primary_activations_all_prompts, device, layers)
-                last_added = i
+                # If the attack is successful on 80% or more prompts, add next prompt(s)
+
+                if len(texts) >= 10:
+                    # If the suffix has been optimised for 10 or more prompts, it has hopefully reached
+                    # a stable point where it will work for many prompts. Therefore, it might be sagacious
+                    # to add 1/3 new prompts to the list to save time
+                    for j in range(int(len(texts) / 3)):
+                        if len(texts) < len(prompt_indices):
+                            add_next_prompt(training_prompts, prompt_indices, texts, primary_activations_all_prompts, device, layers)
+                else:
+                    add_next_prompt(training_prompts, prompt_indices, texts, primary_activations_all_prompts, device, layers)
+                    last_added = i
 
             if len(texts) >= 5 and i - last_added == 10:
                 # If there are already 5 or more prompts and the latest one or any previous one is being recalcitrant
@@ -337,7 +358,8 @@ def run_attack(
     return result_dict
 
 
-def run_phi_attack_from_another_file():
+if __name__ == "__main__":
+
     adv_string_init_list = [
         r"""$ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $""",
         r"""* * * * * * * * * * * * * * * * * * * *""",
@@ -365,12 +387,15 @@ def run_phi_attack_from_another_file():
     print(model.dtype)
 
     training_prompts = get_training_prompts()
+    num_training_prompts = len(training_prompts)
 
     num_steps = 500
     topk = 256
     batch_size = 512
 
+
     allow_non_ascii = False  # you can set this to True to use unicode tokens
+
 
     linear_models = {}
 
@@ -383,8 +408,7 @@ def run_phi_attack_from_another_file():
     layers.sort()
 
     for i in layers:
-        linear_models[i] = pickle.load(
-            open(f'{PROJECT_ROOT}/trained_linear_probes_microsoft/{model_name}/{i}/model.pickle', 'rb'))
+        linear_models[i] = pickle.load(open(f'{PROJECT_ROOT}/trained_linear_probes_microsoft/{model_name}/{i}/model.pickle', 'rb'))
 
     custom_model = CustomModel(model, linear_models)
     device = custom_model.base_model.get_input_embeddings().weight.device
@@ -395,6 +419,7 @@ def run_phi_attack_from_another_file():
     result_path = f'{PROJECT_ROOT}/opt_results/{model_name}_optimisation_result.json'
 
     start_idx = 0
+
     if os.path.exists(result_path):
         optimisation_result = json.load(open(result_path, 'r'))
         start_idx = len(optimisation_result['Result list'])
@@ -403,13 +428,13 @@ def run_phi_attack_from_another_file():
             "Result list": []
         }
 
-    print(f"phi start idx: {start_idx}")
-
     for idx in range(start_idx, len(adv_string_init_list)):
+        print(f"Suffix idx: {idx}")
+
         adv_string_init = adv_string_init_list[idx]
 
-        # Randomly select 50 from the first 100000 prompts
-        prompt_indices = random.sample(range(100000), 50)
+        # Randomly select n from the training prompts
+        prompt_indices = random.sample(range(num_training_prompts), 200)
 
         # Get the text from the train dataset
         texts = [training_prompts[prompt_indices[0]]]
@@ -450,14 +475,9 @@ def run_phi_attack_from_another_file():
             json.dump(optimisation_result, f, indent=4)
 
 
-    del model, tokenizer
-    gc.collect()
-    torch.cuda.empty_cache()
 
 
-
-# if __name__ == "__main__":
-#
+# def run_phi_attack_from_another_file():
 #     adv_string_init_list = [
 #         r"""$ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $ $""",
 #         r"""* * * * * * * * * * * * * * * * * * * *""",
@@ -490,9 +510,7 @@ def run_phi_attack_from_another_file():
 #     topk = 256
 #     batch_size = 512
 #
-#
 #     allow_non_ascii = False  # you can set this to True to use unicode tokens
-#
 #
 #     linear_models = {}
 #
@@ -505,7 +523,8 @@ def run_phi_attack_from_another_file():
 #     layers.sort()
 #
 #     for i in layers:
-#         linear_models[i] = pickle.load(open(f'{PROJECT_ROOT}/trained_linear_probes_microsoft/{model_name}/{i}/model.pickle', 'rb'))
+#         linear_models[i] = pickle.load(
+#             open(f'{PROJECT_ROOT}/trained_linear_probes_microsoft/{model_name}/{i}/model.pickle', 'rb'))
 #
 #     custom_model = CustomModel(model, linear_models)
 #     device = custom_model.base_model.get_input_embeddings().weight.device
@@ -516,7 +535,6 @@ def run_phi_attack_from_another_file():
 #     result_path = f'{PROJECT_ROOT}/opt_results/{model_name}_optimisation_result.json'
 #
 #     start_idx = 0
-#
 #     if os.path.exists(result_path):
 #         optimisation_result = json.load(open(result_path, 'r'))
 #         start_idx = len(optimisation_result['Result list'])
@@ -525,7 +543,11 @@ def run_phi_attack_from_another_file():
 #             "Result list": []
 #         }
 #
+#     print(f"phi start idx: {start_idx}")
+#
 #     for idx in range(start_idx, len(adv_string_init_list)):
+#
+#         print(f"Suffix idx: {idx}")
 #
 #         adv_string_init = adv_string_init_list[idx]
 #
@@ -569,3 +591,10 @@ def run_phi_attack_from_another_file():
 #
 #         with open(result_path, 'w') as f:
 #             json.dump(optimisation_result, f, indent=4)
+#
+#
+#     del model, tokenizer
+#     gc.collect()
+#     torch.cuda.empty_cache()
+
+
