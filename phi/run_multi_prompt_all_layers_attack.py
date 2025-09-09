@@ -380,7 +380,13 @@ if __name__ == "__main__":
         r"""@ @ @ @ @ @ @ @ @ @ @ @ @ @ @ @ @ @ @ @""",
         r"""O @ ! x @ & @ R $ B @ P @ Q @ T } W @ M""",
         r"""@ ( t _ z | @ ; y [ v @ $ l j * i @ : r""",
-        r"""# hi @ no @ ! ! ~ < n { s ' ; @ u > c .""",
+
+        r"""# hi @ no @ ! ! ~ < n { s ' ; @ u > c .""",  # with unicode
+        r"""* $ % ^ + & $ ! $ ! [ # ! * $ ! % ] - |""",  # with unicode
+        r"""$ . ! > { ! } ) ! $ ( / @ $ ^ ! = : & !""",  # with unicode
+        r"""! ! j $ $ a * * h = = e & & d < < > > #""",  # with unicode
+        r"""@ - = @ _ ! $ ^ $ ! ; < % | ! & $ ^ # =""",  # with unicode
+        r"""t * a - s % k ! $ d : r ^ i | f = t @ ;"""   # with unicode
     ]
 
     model, tokenizer = load_model_and_tokenizer(model_path)
@@ -394,7 +400,7 @@ if __name__ == "__main__":
     batch_size = 512
 
 
-    allow_non_ascii = False  # you can set this to True to use unicode tokens
+    allow_non_ascii = True  # you can set this to True to use unicode tokens
 
 
     linear_models = {}

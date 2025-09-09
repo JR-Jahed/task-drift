@@ -8,33 +8,33 @@ model = 'phi3'
 iteration_log_index = {
     'train': {
         'suffix indices': [
-            0, 1, 2, 3, 4, 5, 7, 8, 9, 10
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 10
         ],
         'iteration_list': [
-            [-1, 27],
-            [-1, 62],
-            [-1, 70],
-            [-1, 41],
-            [-1, 41],
+            [-1, 14],
+            [-1, 85],
+            [-1, 53],
+            [-1, 26],
+            [-1, 23],
+            [-1, 83],
+            [-1, 106],
+            [-1, 104],
             [-1, 33],
-            [-1, 65],
-            [-1, 67],
-            [-1, 74],
-            [-1, 84],
+            [-1, 102],
         ]
     },
     'val': {
         'suffix indices': [
-            11, 12
+            12, 13
         ],
         'iteration_list': [
-            [-1, 16],
-            [-1, 21],
+            [-1, 168],
+            [-1, 72],
         ]
     },
     'test': {
         'suffix indices': [
-            13, 14, 15, 16, 17, 18,
+            14, 15, 16, 17, 18, 19, 20
         ],
         'iteration_list': [
             [-1],
@@ -43,6 +43,7 @@ iteration_log_index = {
             [-1],
             [-1],
             [-1],
+            [-1]
         ]
     }
 }
@@ -87,11 +88,11 @@ train_suffix_list_filepath = f'{PROJECT_ROOT}/generate_activations/data/{model}_
 val_suffix_list_filepath = f'{PROJECT_ROOT}/generate_activations/data/{model}_val_suffix_list.json'
 test_suffix_list_filepath = f'{PROJECT_ROOT}/{model}_test_suffix_list.json'
 
-# with open(train_suffix_list_filepath, 'w') as f:
-#     json.dump(train_suffix_list_json, f, indent=4)
+with open(train_suffix_list_filepath, 'w') as f:
+    json.dump(train_suffix_list_json, f, indent=4)
 
-# with open(val_suffix_list_filepath, 'w') as f:
-#     json.dump(val_suffix_list_json, f, indent=4)
+with open(val_suffix_list_filepath, 'w') as f:
+    json.dump(val_suffix_list_json, f, indent=4)
 
-# with open(test_suffix_list_filepath, 'w') as f:
-#     json.dump(test_suffix_list_json, f, indent=4)
+with open(test_suffix_list_filepath, 'w') as f:
+    json.dump(test_suffix_list_json, f, indent=4)
