@@ -171,9 +171,6 @@ def analyse_performance_of_all_three_models(filepath):
     total_test_suffixes = len(results['Result list'])
     print(f"Total test suffixes: {total_test_suffixes}")
 
-    # print(results.keys())
-    # return
-
     for i in range(total_test_suffixes):
 
         print(f"Test suffix: {results['Result list'][i]['Suffix']}\n")
@@ -183,14 +180,30 @@ def analyse_performance_of_all_three_models(filepath):
         correct_classification_all_five_microsoft_trained_models = results['Result list'][i]["Total number of prompts correctly classified by a specific number of classifiers"]["With suffix"]['Microsoft trained models']['5']
         correct_classification_four_or_more_microsoft_trained_models = results['Result list'][i]["Total number of prompts correctly classified by a specific number of classifiers"]["With suffix"]['Microsoft trained models']['4'] + correct_classification_all_five_microsoft_trained_models
         correct_classification_three_or_more_microsoft_trained_models = results['Result list'][i]["Total number of prompts correctly classified by a specific number of classifiers"]["With suffix"]['Microsoft trained models']['3'] + correct_classification_four_or_more_microsoft_trained_models
+        correct_classification_last_four_microsoft_trained_models = 0
+
+        for j in range(len(results['Result list'][i]['Attack result list'])):
+            if results['Result list'][i]['Attack result list'][j]['With suffix']['Microsoft trained models']['labels'][1:].count(1) == 4:
+                correct_classification_last_four_microsoft_trained_models += 1
 
         correct_classification_all_five_adv_trained_models_suffix = results['Result list'][i]["Total number of prompts correctly classified by a specific number of classifiers"]["With suffix"]['Adv trained models (suffix)']['5']
         correct_classification_four_or_more_adv_trained_models_suffix = results['Result list'][i]["Total number of prompts correctly classified by a specific number of classifiers"]["With suffix"]['Adv trained models (suffix)']['4'] + correct_classification_all_five_adv_trained_models_suffix
         correct_classification_three_or_more_adv_trained_models_suffix = results['Result list'][i]["Total number of prompts correctly classified by a specific number of classifiers"]["With suffix"]['Adv trained models (suffix)']['3'] + correct_classification_four_or_more_adv_trained_models_suffix
+        correct_classification_last_four_adv_trained_models_suffix = 0
+
+        for j in range(len(results['Result list'][i]['Attack result list'])):
+            if results['Result list'][i]['Attack result list'][j]['With suffix']['Adv trained models (suffix)']['labels'][1:].count(1) == 4:
+                correct_classification_last_four_adv_trained_models_suffix += 1
 
         correct_classification_all_five_adv_trained_models_pgd = results['Result list'][i]["Total number of prompts correctly classified by a specific number of classifiers"]["With suffix"]['Adv trained models (PGD)']['5']
         correct_classification_four_or_more_adv_trained_models_pgd = results['Result list'][i]["Total number of prompts correctly classified by a specific number of classifiers"]["With suffix"]['Adv trained models (PGD)']['4'] + correct_classification_all_five_adv_trained_models_pgd
         correct_classification_three_or_more_adv_trained_models_pgd = results['Result list'][i]["Total number of prompts correctly classified by a specific number of classifiers"]["With suffix"]['Adv trained models (PGD)']['3'] + correct_classification_four_or_more_adv_trained_models_pgd
+        correct_classification_last_four_adv_trained_models_pgd = 0
+
+        for j in range(len(results['Result list'][i]['Attack result list'])):
+            if results['Result list'][i]['Attack result list'][j]['With suffix']['Adv trained models (PGD)']['labels'][1:].count(1) == 4:
+                correct_classification_last_four_adv_trained_models_pgd += 1
+
 
         print("Total number of prompts correctly classified by a specific number of classifiers")
         print("----------    Without suffix:")
@@ -202,15 +215,18 @@ def analyse_performance_of_all_three_models(filepath):
         print("----------    With suffix:")
         print(f"Microsoft trained models:   {results['Result list'][i]['Total number of prompts correctly classified by a specific number of classifiers']['With suffix']['Microsoft trained models']}"
               f"  --  all five: {correct_classification_all_five_microsoft_trained_models / num_tested_prompts * 100:.2f}%    four or more: {correct_classification_four_or_more_microsoft_trained_models / num_tested_prompts * 100:.2f}%"
-              f"    three or more: {correct_classification_three_or_more_microsoft_trained_models / num_tested_prompts * 100:.2f}%")
+              f"    three or more: {correct_classification_three_or_more_microsoft_trained_models / num_tested_prompts * 100:.2f}%"
+              f"   last four: {correct_classification_last_four_microsoft_trained_models / num_tested_prompts * 100:.2f}%")
 
         print(f"Adv trained models(suffix): {results['Result list'][i]['Total number of prompts correctly classified by a specific number of classifiers']['With suffix']['Adv trained models (suffix)']}"
               f"  --  all five: {correct_classification_all_five_adv_trained_models_suffix / num_tested_prompts * 100:.2f}%    four or more: {correct_classification_four_or_more_adv_trained_models_suffix / num_tested_prompts * 100:.2f}%"
-              f"    three or more: {correct_classification_three_or_more_adv_trained_models_suffix / num_tested_prompts * 100:.2f}%")
+              f"    three or more: {correct_classification_three_or_more_adv_trained_models_suffix / num_tested_prompts * 100:.2f}%"
+              f"   last four: {correct_classification_last_four_adv_trained_models_suffix / num_tested_prompts * 100:.2f}%")
 
         print(f"Adv trained models(PGD):    {results['Result list'][i]['Total number of prompts correctly classified by a specific number of classifiers']['With suffix']['Adv trained models (PGD)']}"
               f"  --  all five: {correct_classification_all_five_adv_trained_models_pgd / num_tested_prompts * 100:.2f}%    four or more: {correct_classification_four_or_more_adv_trained_models_pgd / num_tested_prompts * 100:.2f}%"
-              f"    three or more: {correct_classification_three_or_more_adv_trained_models_pgd / num_tested_prompts * 100:.2f}%")
+              f"    three or more: {correct_classification_three_or_more_adv_trained_models_pgd / num_tested_prompts * 100:.2f}%"
+              f"   last four: {correct_classification_last_four_adv_trained_models_pgd / num_tested_prompts * 100:.2f}%")
 
 
 
